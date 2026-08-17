@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import random
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -52,27 +51,11 @@ from scoring import (
     score_label,
     summarize_nights,
 )
+from starfield import inject_starfield
 from units import default_unit_system, distance_to_km, format_distance
 
 st.set_page_config(page_title="Midnight", page_icon="🌌", layout="centered")
-
-if "midnight_starfield" not in st.session_state:
-    star_rng = random.Random(20260817)
-
-    def build_star_layer(count: int, min_alpha: float, max_alpha: float) -> str:
-        return ",".join(
-            f"{star_rng.uniform(0, 100):.2f}vw {star_rng.uniform(0, 100):.2f}vh "
-            f"0 {star_rng.choice((0, 0, 1))}px rgba(247,245,240,{star_rng.uniform(min_alpha, max_alpha):.2f})"
-            for _ in range(count)
-        )
-
-    st.session_state["midnight_starfield"] = {
-        "far": build_star_layer(145, 0.18, 0.45),
-        "mid": build_star_layer(82, 0.32, 0.68),
-        "near": build_star_layer(38, 0.55, 0.92),
-    }
-
-starfield = st.session_state["midnight_starfield"]
+inject_starfield()
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
@@ -114,75 +97,6 @@ h3::before {{
     background: var(--midnight-gold);
     transform: rotate(45deg) translateY(-0.05em);
     box-shadow: 0 0 16px rgba(242, 184, 128, 0.5);
-}}
-
-.midnight-star-layer {{
-    position: fixed;
-    top: 0;
-    left: 0;
-    border-radius: 50%;
-    pointer-events: none;
-    z-index: 0;
-    will-change: transform;
-}}
-.midnight-stars-far {{
-    width: 1px; height: 1px; box-shadow: {starfield['far']};
-    animation: midnight-drift-far 120s ease-in-out infinite alternate;
-}}
-.midnight-stars-mid {{
-    width: 1.5px; height: 1.5px; box-shadow: {starfield['mid']};
-    animation: midnight-drift-mid 88s ease-in-out infinite alternate;
-}}
-.midnight-stars-near {{
-    width: 2px; height: 2px; box-shadow: {starfield['near']};
-    animation: midnight-drift-near 64s ease-in-out infinite alternate;
-}}
-@keyframes midnight-drift-far {{ to {{ transform: translate3d(-4px, 6px, 0); }} }}
-@keyframes midnight-drift-mid {{ to {{ transform: translate3d(8px, -7px, 0); }} }}
-@keyframes midnight-drift-near {{ to {{ transform: translate3d(-10px, -6px, 0); }} }}
-
-.midnight-shooting-star {{
-    position: fixed;
-    z-index: 1;
-    width: 150px;
-    height: 1px;
-    opacity: 0;
-    pointer-events: none;
-    background: linear-gradient(90deg, transparent, rgba(242,184,128,0.35), #F7F5F0);
-    filter: drop-shadow(0 0 5px rgba(242,184,128,0.9));
-    transform: rotate(-28deg);
-}}
-.midnight-shooting-star::after {{
-    content: "";
-    position: absolute;
-    right: -2px;
-    top: -2px;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: #F7F5F0;
-    box-shadow: 0 0 12px #F2B880;
-}}
-.shooting-one {{ top: 14vh; left: -12vw; animation: shoot-one 13s ease-in infinite 2s; }}
-.shooting-two {{ top: 34vh; left: 52vw; animation: shoot-two 18s ease-in infinite 8s; }}
-.shooting-three {{ top: 8vh; left: 76vw; animation: shoot-three 23s ease-in infinite 14s; }}
-@keyframes shoot-one {{
-    0%, 76% {{ opacity: 0; transform: translate3d(0,0,0) rotate(-28deg); }}
-    78% {{ opacity: 1; }}
-    84% {{ opacity: 0; transform: translate3d(76vw,44vh,0) rotate(-28deg); }}
-    100% {{ opacity: 0; }}
-}}
-@keyframes shoot-two {{
-    0%, 80% {{ opacity: 0; transform: translate3d(0,0,0) rotate(-28deg); }}
-    82% {{ opacity: 0.9; }}
-    88% {{ opacity: 0; transform: translate3d(52vw,30vh,0) rotate(-28deg); }}
-    100% {{ opacity: 0; }}
-}}
-@keyframes shoot-three {{
-    0%, 84% {{ opacity: 0; transform: translate3d(0,0,0) rotate(-28deg); }}
-    86% {{ opacity: 0.8; }}
-    91% {{ opacity: 0; transform: translate3d(31vw,20vh,0) rotate(-28deg); }}
-    100% {{ opacity: 0; }}
 }}
 
 .midnight-hero {{
@@ -333,16 +247,8 @@ a {{ color: #F2B880 !important; text-underline-offset: 3px; }}
 }}
 @media (prefers-reduced-motion: reduce) {{
     *, *::before, *::after {{ scroll-behavior: auto !important; transition: none !important; }}
-    .midnight-star-layer {{ animation: none !important; }}
-    .midnight-shooting-star {{ display: none !important; }}
 }}
 </style>
-<div class="midnight-star-layer midnight-stars-far" aria-hidden="true"></div>
-<div class="midnight-star-layer midnight-stars-mid" aria-hidden="true"></div>
-<div class="midnight-star-layer midnight-stars-near" aria-hidden="true"></div>
-<div class="midnight-shooting-star shooting-one" aria-hidden="true"></div>
-<div class="midnight-shooting-star shooting-two" aria-hidden="true"></div>
-<div class="midnight-shooting-star shooting-three" aria-hidden="true"></div>
 """, unsafe_allow_html=True)
 
 st.markdown("""
