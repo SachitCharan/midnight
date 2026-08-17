@@ -237,6 +237,10 @@ def _geonames_within_radius(lat: float, lon: float, radius_km: float = 150.0) ->
     ]
 
 
+def _pnw_population_fallback() -> list[dict]:
+    return [center | {"country_code": "US", "feature_class": "P"} for center in PNW_POPULATION_CENTERS]
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_population_centers(lat: float, lon: float, use_overpass: bool = False) -> tuple[list[dict], bool, str | None]:
     """Load committed GeoNames data; optionally enrich it with live Overpass."""
@@ -247,12 +251,12 @@ def fetch_population_centers(lat: float, lon: float, use_overpass: bool = False)
         for center in PNW_POPULATION_CENTERS:
             rough_distance = ((center["lat"] - lat) ** 2 + ((center["lon"] - lon) * np.cos(np.radians(lat))) ** 2) ** 0.5 * 111
             if rough_distance <= 150:
-                nearby_enrichment.append(center)
+                nearby_enrichment.append(center | {"country_code": "US", "feature_class": "P"})
         merged = {center["name"].casefold(): center for center in centers}
         merged.update({center["name"].casefold(): center for center in nearby_enrichment})
         centers = list(merged.values())
     except (OSError, ValueError, pd.errors.ParserError):
-        return list(PNW_POPULATION_CENTERS), False, "GeoNames data could not be loaded; using the bundled PNW emergency dataset."
+        return _pnw_population_fallback(), False, "GeoNames data could not be loaded; using the bundled PNW emergency dataset."
 
     if not use_overpass:
         return centers, False, None
@@ -282,3 +286,83 @@ out body;'''
             if attempt == 0:
                 time.sleep(1)
     return centers, False, None
+
+
+def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    lat1_rad, lat2_rad = np.radians(lat1), np.radians(lat2)
+    dlat = lat2_rad - lat1_rad
+    dlon = np.radians(lon2 - lon1)
+    value = np.sin(dlat / 2) ** 2 + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(dlon / 2) ** 2
+    return float(6371.0 * 2 * np.arcsin(np.sqrt(np.clip(value, 0, 1))))
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def enrich_dark_sites_with_osm(sites: list[dict]) -> tuple[list[dict], bool]:
+    """Prefer nearby named OSM recreation features; otherwise return honest town fallbacks."""
+    fallback = [site | {
+        "access_label": "Nearest town — find a public pullout or park nearby. Access not verified.",
+        "osm_public_feature": False,
+    } for site in sites]
+    if not sites:
+        return fallback, False
+
+    clauses = []
+    for site in sites:
+        point = f"(around:5000,{site['lat']},{site['lon']})"
+        clauses.extend([
+            f'nwr{point}["leisure"~"^(park|nature_reserve|recreation_ground)$"];',
+            f'nwr{point}["tourism"="viewpoint"];',
+            f'nwr{point}["highway"="trailhead"];',
+            f'nwr{point}["boundary"~"^(protected_area|national_park)$"];',
+        ])
+    query = "[out:json][timeout:25];(" + "".join(clauses) + ");out center tags;"
+    try:
+        response = requests.post(OVERPASS_URL, data={"data": query}, timeout=30)
+        response.raise_for_status()
+        features = []
+        for element in response.json().get("elements", []):
+            tags = element.get("tags", {})
+            name = str(tags.get("name", "")).strip()
+            center = element.get("center", {})
+            feature_lat = element.get("lat", center.get("lat"))
+            feature_lon = element.get("lon", center.get("lon"))
+            access = str(tags.get("access", "")).lower()
+            if not name or feature_lat is None or feature_lon is None or access in {"no", "private", "customers"}:
+                continue
+            feature_type = (
+                tags.get("leisure") or tags.get("tourism") or tags.get("highway")
+                or tags.get("boundary") or "recreation feature"
+            ).replace("_", " ")
+            confirmed = access in {"yes", "permissive", "designated"} or tags.get("ownership") == "public"
+            access_label = (
+                f"OpenStreetMap {feature_type} — access tagged {access or 'public ownership'}; verify hours and current rules."
+                if confirmed
+                else f"OpenStreetMap {feature_type} — public access is not explicitly tagged; verify before visiting."
+            )
+            features.append({
+                "name": name, "lat": float(feature_lat), "lon": float(feature_lon),
+                "kind": f"OpenStreetMap {feature_type}", "access_label": access_label,
+                "osm_public_feature": confirmed,
+            })
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return fallback, False
+
+    enriched = []
+    used_osm = False
+    for site in sites:
+        nearby = sorted(
+            (
+                (_distance_km(site["lat"], site["lon"], feature["lat"], feature["lon"]), feature)
+                for feature in features
+            ),
+            key=lambda pair: pair[0],
+        )
+        if nearby and nearby[0][0] <= 5.0:
+            used_osm = True
+            enriched.append(site | nearby[0][1] | {"nearest_town": site["name"]})
+        else:
+            enriched.append(site | {
+                "access_label": "Nearest town — find a public pullout or park nearby. Access not verified.",
+                "osm_public_feature": False,
+            })
+    return enriched, used_osm

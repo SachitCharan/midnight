@@ -24,6 +24,7 @@ def find_dark_sites(
     max_distance_km: float = 100,
     top_n: int = 8,
     sort_by: str = "Best balance",
+    country_code: str | None = None,
 ) -> list[dict]:
     """Return named populated places ranked by darkness and travel distance."""
     if max_distance_km <= 0 or top_n <= 0:
@@ -32,6 +33,9 @@ def find_dark_sites(
     seen = set()
     for place in population_centers:
         if place.get("feature_class", "P") != "P":
+            continue
+        place_country_code = str(place.get("country_code", "")).upper()
+        if country_code and place_country_code and place_country_code != country_code.upper():
             continue
         try:
             candidate_lat = float(place["lat"])
@@ -58,6 +62,7 @@ def find_dark_sites(
             "bortle": bortle_class(brightness),
             "usefulness_score": round(dark_score - 0.04 * distance, 1),
             "kind": "GeoNames populated place",
+            "country_code": place_country_code,
         })
 
     if sort_by == "Darkest sky":
@@ -67,3 +72,8 @@ def find_dark_sites(
     else:
         candidates.sort(key=lambda item: (-item["usefulness_score"], -item["darkness_score"], item["distance_km"], item["name"]))
     return candidates[:top_n]
+
+
+def google_maps_url(lat: float, lon: float) -> str:
+    """Return a keyless Google Maps search handoff for one coordinate."""
+    return f"https://www.google.com/maps/search/?api=1&query={float(lat):.6f},{float(lon):.6f}"

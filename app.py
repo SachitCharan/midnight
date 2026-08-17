@@ -17,11 +17,12 @@ from astronomy import (
     moon_phase_name,
     visible_planets,
 )
-from dark_sites import find_dark_sites
-from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
+from dark_sites import distance_km, find_dark_sites, google_maps_url
+from data_sources import enrich_dark_sites_with_osm, fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
 from interpretations import (
     interpret_aerosol,
     interpret_bortle,
+    interpret_bortle_improvement,
     interpret_cloud_layers,
     interpret_clouds,
     interpret_component,
@@ -32,8 +33,9 @@ from interpretations import (
     interpret_score,
     interpret_smoke,
     visibility_snapshot,
+    estimated_dark_sky_distance_km,
 )
-from light_pollution import artificial_brightness, bortle_class, visibility_expectations
+from light_pollution import artificial_brightness, bortle_class, darkness_score, visibility_expectations
 from meteor_showers import meteor_activity
 from scoring import (
     build_score_timeline,
@@ -469,13 +471,23 @@ if selected_match is not None:
         key="dark_site_sort",
     )
     sites = find_dark_sites(
-        location["lat"], location["lon"], centers, max_distance_km, 8, sort_by=dark_site_sort
+        location["lat"], location["lon"], centers, max_distance_km, 8,
+        sort_by=dark_site_sort, country_code=country_code,
     )
+    sites, osm_lookup_succeeded = enrich_dark_sites_with_osm(sites)
+    for site in sites:
+        site["distance_km"] = round(distance_km(location["lat"], location["lon"], site["lat"], site["lon"]), 1)
+        site["brightness_index"] = artificial_brightness(site["lat"], site["lon"], centers)
+        site["darkness_score"] = darkness_score(site["brightness_index"])
+        site["bortle"] = bortle_class(site["brightness_index"])
+        site["maps_url"] = google_maps_url(site["lat"], site["lon"])
+        site["country"] = location["country"] if site.get("country_code") == country_code else site.get("country_code", "Unknown")
     if sites:
         map_rows = [{
             **site,
             "distance_display": format_distance(site["distance_km"], unit_system),
             "bortle_meaning": interpret_bortle(site["bortle"]),
+            "access_label": site["access_label"],
             "marker": "Dark-site candidate",
             "color": [216, 167, 255, 220],
         } for site in sites]
@@ -493,7 +505,7 @@ if selected_match is not None:
         view = pdk.ViewState(latitude=location["lat"], longitude=location["lon"], zoom=7)
         deck = pdk.Deck(
             layers=[layer], initial_view_state=view,
-            tooltip={"html": "<b>{name}</b><br/>{marker}<br/>{bortle_meaning}<br/>{distance_display} straight-line"},
+            tooltip={"html": "<b>{name}</b><br/>{marker}<br/>{bortle_meaning}<br/>{access_label}<br/>{distance_display} straight-line"},
             map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         )
         st.pydeck_chart(deck, width="stretch")
@@ -507,19 +519,32 @@ if selected_match is not None:
             f"{format_distance(0, unit_system)} straight-line · "
             f"`{location['lat']:.4f}, {location['lon']:.4f}`"
         )
+        st.markdown(f"[Open starting location in Google Maps]({google_maps_url(location['lat'], location['lon'])})")
+        meaningful_sites = [site for site in sites if bortle - site["bortle"] >= 3 or site["bortle"] <= 4]
+        if not meaningful_sites:
+            estimate = estimated_dark_sky_distance_km(bortle)
+            st.warning(
+                f"No site within {format_distance(max_distance_km, unit_system)} gets you to a meaningfully darker sky. "
+                f"A Bortle 4-or-better sky is roughly {format_distance(estimate, unit_system)} away by a city-brightness "
+                "rule of thumb; this is not a verified destination."
+            )
+        if osm_lookup_succeeded:
+            st.caption("OpenStreetMap recreation-feature lookup succeeded; each access statement below says what OSM did or did not verify.")
+        else:
+            st.info("OpenStreetMap public-land lookup was unavailable or found no nearby feature. Town fallbacks are labeled as unverified.")
         for index, site in enumerate(sites, 1):
             st.markdown(
                 f"**{index}. {site['name']}**  \n"
+                f"{site['country']}  \n"
                 f"{interpret_distance(site['distance_km'], unit_system)}  \n"
-                f"{interpret_bortle(site['bortle'])}  \n"
+                f"{interpret_bortle_improvement(bortle, site['bortle'])}  \n"
+                f"{site['access_label']}  \n"
                 f"Darkness {site['darkness_score']:.0f}/100 — "
                 f"{interpret_component('light_pollution', site['darkness_score'])} · {site['kind']} · "
-                f"`{site['lat']:.4f}, {site['lon']:.4f}`"
+                f"`{site['lat']:.4f}, {site['lon']:.4f}`  \n"
+                f"[Open in Google Maps]({site['maps_url']})"
             )
-        st.warning(
-            "These are real named populated places, but not verified observing sites. "
-            "Check public access, closures, weather, and local rules before traveling."
-        )
+        st.warning("Always verify public access, opening hours, closures, weather, and local rules before traveling.")
     else:
         st.write(
             "No verified populated-place candidates were found within that distance. "

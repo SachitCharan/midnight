@@ -124,6 +124,27 @@ def interpret_distance(km: float, units: str) -> str:
     return f"{distance_text} straight-line — {time_text}, before traffic and road detours."
 
 
+def interpret_bortle_improvement(start_bortle: int, site_bortle: int) -> str:
+    start = max(1, min(9, int(start_bortle)))
+    site = max(1, min(9, int(site_bortle)))
+    gain = start - site
+    prefix = f"Bortle {start} → {site}."
+    if site <= 4 and gain > 0:
+        return f"{prefix} Meaningful improvement — the Milky Way should become visible in clear, moonless conditions."
+    if gain >= 3:
+        return f"{prefix} Meaningful improvement — many more faint stars should appear."
+    if gain == 2:
+        return f"{prefix} Modest improvement — the Milky Way still won't be visible."
+    if gain == 1:
+        return f"{prefix} Marginal improvement — expect only a small increase in visible stars."
+    return f"{prefix} No modeled improvement over the starting location."
+
+
+def estimated_dark_sky_distance_km(start_bortle: int) -> float:
+    """Return a clearly labeled rule-of-thumb radius for reaching Bortle 4 or better."""
+    return {9: 145.0, 8: 120.0, 7: 90.0, 6: 65.0, 5: 40.0}.get(max(1, min(9, int(start_bortle))), 0.0)
+
+
 def interpret_darkness_window(start: datetime, end: datetime) -> str:
     start_text = start.strftime("%I:%M %p").lstrip("0")
     end_text = end.strftime("%I:%M %p").lstrip("0")

@@ -19,6 +19,7 @@ from light_pollution import artificial_brightness, bortle_class, darkness_score
 from interpretations import (
     interpret_aerosol,
     interpret_bortle,
+    interpret_bortle_improvement,
     interpret_cloud_layers,
     interpret_clouds,
     interpret_darkness_window,
@@ -30,8 +31,8 @@ from interpretations import (
     visibility_snapshot,
 )
 from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, limiting_factor, normalize_hourly_data, score_label, summarize_nights
-from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
-from dark_sites import distance_km, find_dark_sites
+from data_sources import enrich_dark_sites_with_osm, fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
+from dark_sites import distance_km, find_dark_sites, google_maps_url
 from meteor_showers import meteor_activity
 from units import default_unit_system, distance_to_km, format_distance
 
@@ -201,6 +202,28 @@ def test_dark_sites_are_ranked_and_bounded() -> None:
     assert all(site["name"] in {center["name"] for center in centers} for site in sites)
     assert all(site["kind"] == "GeoNames populated place" for site in sites)
     assert all(abs(distance_km(45.5152, -122.6784, site["lat"], site["lon"]) - site["distance_km"]) < 0.2 for site in sites)
+
+
+def test_dark_sites_exclude_cross_border_candidates() -> None:
+    centers = [
+        {"name": "San Diego", "lat": 32.7157, "lon": -117.1611, "population": 1400000, "country_code": "US"},
+        {"name": "US Site", "lat": 32.9, "lon": -116.9, "population": 20000, "country_code": "US"},
+        {"name": "Mexico Site", "lat": 32.48, "lon": -116.83, "population": 20000, "country_code": "MX"},
+    ]
+    sites = find_dark_sites(32.7157, -117.1611, centers, 100, 8, country_code="US")
+    assert sites and all(site["country_code"] == "US" for site in sites)
+    assert "Mexico Site" not in {site["name"] for site in sites}
+
+
+def test_dark_site_maps_improvement_and_osm_fallback() -> None:
+    assert google_maps_url(45.5, -122.7).startswith("https://www.google.com/maps/search/?api=1&query=")
+    assert "Modest improvement" in interpret_bortle_improvement(9, 7)
+    assert "Milky Way still won't be visible" in interpret_bortle_improvement(9, 7)
+    enrich_dark_sites_with_osm.clear()
+    sample = [{"name": "Town", "lat": 45.0, "lon": -122.0, "country_code": "US"}]
+    with patch("data_sources.requests.post", side_effect=requests.ConnectionError("offline")):
+        enriched, used_osm = enrich_dark_sites_with_osm(sample)
+    assert not used_osm and "Access not verified" in enriched[0]["access_label"]
 
 
 def test_dark_site_sorting_exposes_distance_darkness_tradeoff() -> None:
