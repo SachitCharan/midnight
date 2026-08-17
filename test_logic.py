@@ -19,11 +19,14 @@ from light_pollution import artificial_brightness, bortle_class, darkness_score
 from interpretations import (
     interpret_aerosol,
     interpret_bortle,
+    interpret_cloud_layers,
     interpret_clouds,
     interpret_darkness_window,
     interpret_distance,
+    interpret_fog,
     interpret_moon,
     interpret_score,
+    interpret_smoke,
     visibility_snapshot,
 )
 from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, limiting_factor, normalize_hourly_data, score_label, summarize_nights
@@ -48,6 +51,9 @@ def test_interpretations_change_with_low_mid_high_values() -> None:
         [interpret_moon(*value) for value in ((0.1, 10), (0.45, 30), (0.9, 60))],
         [interpret_clouds(value) for value in (5, 50, 95)],
         [interpret_aerosol(*value) for value in ((0.05, 5), (0.18, 15), (0.4, 40))],
+        [interpret_smoke(value) for value in (5, 15, 40)],
+        [interpret_fog(*value)[1] for value in ((10, 9, 5), (10, 7, 10), (15, 5, 20))],
+        [interpret_cloud_layers(*value) for value in ((5, 5, 5), (15, 20, 80), (80, 10, 10))],
         [interpret_distance(value, "Metric (km)") for value in (10, 60, 140)],
     ]
     start = datetime(2026, 8, 17, 22, tzinfo=UTC)
@@ -142,6 +148,8 @@ def test_forecast_request_covers_seven_complete_nights() -> None:
     with patch("data_sources.requests.get", side_effect=requests.ConnectionError("offline")) as get:
         fetch_forecast(45.5, -122.7)
     assert get.call_args.kwargs["params"]["forecast_days"] == 8
+    requested = set(get.call_args.kwargs["params"]["hourly"].split(","))
+    assert {"cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "dew_point_2m", "wind_speed_10m"} <= requested
 
 
 def test_empty_geocode_result_is_clean() -> None:

@@ -134,7 +134,7 @@ def fetch_forecast(lat: float, lon: float) -> tuple[list[dict], str | None]:
             params={
                 "latitude": lat,
                 "longitude": lon,
-                "hourly": "cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,relative_humidity_2m,temperature_2m",
+                "hourly": "cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,relative_humidity_2m,temperature_2m,dew_point_2m,wind_speed_10m",
                 "forecast_days": 8,
                 "timezone": "auto",
             },

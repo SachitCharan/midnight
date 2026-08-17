@@ -71,6 +71,44 @@ def interpret_aerosol(aod: float | None, pm25: float) -> str:
     return "Hazy air. Particles will dim stars and scatter more city light back into the sky."
 
 
+def interpret_smoke(pm25: float) -> str:
+    particles = max(0.0, float(pm25))
+    if particles < 10:
+        return "No strong smoke signal appears in the fine-particle forecast."
+    if particles < 25:
+        return "Some particle haze is present, but the forecast does not show a strong smoke signal."
+    return (
+        "Elevated fine particles may indicate wildfire smoke; smoke dims stars and scatters city light "
+        "back toward the ground."
+    )
+
+
+def interpret_fog(temperature: float, dew_point: float, wind_speed: float) -> tuple[bool, str]:
+    spread = float(temperature) - float(dew_point)
+    wind = max(0.0, float(wind_speed))
+    likely = spread <= 2.0 and wind <= 10.0
+    if likely:
+        return True, "Fog is likely because the air is near saturation and winds are light; visibility may fall quickly."
+    if spread <= 4.0 and wind <= 15.0:
+        return False, "Fog is possible if the air cools further, so recheck visibility before leaving."
+    return False, "Fog risk is low because the air is well above its dew point or winds are mixing it."
+
+
+def interpret_cloud_layers(low_pct: float, mid_pct: float, high_pct: float) -> str:
+    low = max(0.0, min(100.0, float(low_pct)))
+    middle = max(0.0, min(100.0, float(mid_pct)))
+    high = max(0.0, min(100.0, float(high_pct)))
+    if low >= 65:
+        return "Low, thick cloud is dominant and will block most of the sky; this is usually a no-go night."
+    if middle >= 65:
+        return "Mid-level cloud is widespread and will repeatedly hide stars across large areas of sky."
+    if high >= 60:
+        return "High thin cloud is dominant; bright stars may show through, but contrast will look soft and washed out."
+    if max(low, middle, high) >= 30:
+        return "Broken cloud layers should leave some usable openings, with interruptions moving through the view."
+    return "All three cloud layers are limited, so cloud height should not be a major obstacle."
+
+
 def interpret_distance(km: float, units: str) -> str:
     distance_km = max(0.0, float(km))
     drive_minutes = max(5, round((distance_km * 1.2 / 80.0 * 60.0) / 5.0) * 5)

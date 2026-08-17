@@ -22,12 +22,15 @@ from data_sources import fetch_air_quality, fetch_forecast, fetch_population_cen
 from interpretations import (
     interpret_aerosol,
     interpret_bortle,
+    interpret_cloud_layers,
     interpret_clouds,
     interpret_component,
     interpret_darkness_window,
     interpret_distance,
+    interpret_fog,
     interpret_moon,
     interpret_score,
+    interpret_smoke,
     visibility_snapshot,
 )
 from light_pollution import artificial_brightness, bortle_class, visibility_expectations
@@ -380,8 +383,30 @@ if selected_match is not None:
     st.info(visibility["loss"])
     st.caption("Planet positions are low-precision estimates; terrain and buildings are not modeled.")
 
+    st.subheader("Cloud layers, fog, and smoke")
+    low_cloud = nearest.get("cloud_cover_low", nearest["cloud_cover"])
+    mid_cloud = nearest.get("cloud_cover_mid", nearest["cloud_cover"])
+    high_cloud = nearest.get("cloud_cover_high", nearest["cloud_cover"])
+    st.write(
+        f"Cloud layers: **{low_cloud:.0f}% low · {mid_cloud:.0f}% middle · {high_cloud:.0f}% high**"
+    )
+    st.caption(interpret_cloud_layers(low_cloud, mid_cloud, high_cloud))
+
+    temperature = nearest.get("temperature_2m", 10.0)
+    dew_point = nearest.get("dew_point_2m", temperature - 5.0)
+    wind_speed = nearest.get("wind_speed_10m", 15.0)
+    dew_point_spread = temperature - dew_point
+    fog_likely, fog_meaning = interpret_fog(temperature, dew_point, wind_speed)
+    st.write(
+        f"Fog inputs: **{dew_point_spread:.1f}°C temperature–dew point spread · "
+        f"{wind_speed:.1f} km/h wind**"
+    )
+    if fog_likely:
+        st.warning(f"Fog risk: {fog_meaning}")
+    else:
+        st.caption(f"Fog risk: {fog_meaning}")
+
     air_quality, air_error = fetch_air_quality(location["lat"], location["lon"])
-    st.subheader("Haze and aerosols")
     if air_quality:
         nearest_air = min(air_quality, key=lambda row: abs((row["time"] - now).total_seconds()))
         pm_value = nearest_air["pm2_5"]
@@ -389,6 +414,11 @@ if selected_match is not None:
         aerosol_text = f" and aerosol optical depth {aerosol:.2f}" if aerosol is not None else ""
         st.write(f"Forecast PM2.5 is **{pm_value:.1f} µg/m³**{aerosol_text}. Lower values generally mean clearer skies.")
         st.caption(interpret_aerosol(aerosol, pm_value))
+        smoke_meaning = interpret_smoke(pm_value)
+        if pm_value >= 25:
+            st.warning(f"Smoke signal: {smoke_meaning}")
+        else:
+            st.caption(f"Smoke signal: {smoke_meaning}")
     else:
         st.info(air_error or "Air-quality detail is unavailable; forecast visibility remains the haze proxy.")
 
