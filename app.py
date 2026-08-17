@@ -280,7 +280,11 @@ if selected_match is not None:
             darkness_start = selected_dark_window[0].astimezone(local_zone)
             darkness_end = selected_dark_window[1].astimezone(local_zone)
             st.caption(interpret_darkness_window(darkness_start, darkness_end))
-            chart_time_domain = [darkness_start.isoformat(), darkness_end.isoformat()]
+            chart_edge_padding = timedelta(minutes=10)
+            chart_time_domain = [
+                (darkness_start - chart_edge_padding).isoformat(),
+                (darkness_end + chart_edge_padding).isoformat(),
+            ]
         if flat_night:
             st.write(
                 f"Conditions barely change {selected_period} ({score_min:.0f}–{score_max:.0f}). "
@@ -332,15 +336,21 @@ if selected_match is not None:
             "layer": [
                 {
                     "transform": [{"filter": "datum['Best window'] === true"}],
-                    "mark": {"type": "rect", "color": "#F2B880", "opacity": 0.18},
+                    "mark": {"type": "rect", "color": "#F2B880", "opacity": 0.18, "clip": True},
                     "encoding": {
                         "x": {"field": "Local time", "type": "temporal"},
                         "x2": {"field": "Interval end"},
+                        "y": {"datum": 0},
+                        "y2": {"datum": 100},
                     },
                 },
                 {
                     "transform": [{"filter": "isValid(datum['Stargazing score'])"}],
-                    "mark": {"type": "line", "color": "#D8A7FF", "point": True},
+                    "mark": {
+                        "type": "line", "color": "#D8A7FF", "strokeWidth": 2.5,
+                        "interpolate": "monotone", "clip": True,
+                        "point": {"filled": True, "size": 48, "color": "#83D5FF"},
+                    },
                     "encoding": {
                         "x": {
                             "field": "Local time", "type": "temporal", "title": "Local date and time",
@@ -371,9 +381,14 @@ if selected_match is not None:
                 },
                 {
                     "transform": [{"filter": "datum['Point type'] === 'Current time'"}],
-                    "mark": {"type": "rule", "color": "#F2B880", "strokeDash": [5, 4], "size": 2},
+                    "mark": {
+                        "type": "rule", "color": "#F2B880", "strokeDash": [5, 4],
+                        "size": 2, "clip": True,
+                    },
                     "encoding": {
                         "x": {"field": "Local time", "type": "temporal"},
+                        "y": {"datum": 0},
+                        "y2": {"datum": 100},
                         "tooltip": [{"field": "Local time", "type": "temporal", "title": "Current time", "format": "%I:%M %p"}],
                     },
                 },
