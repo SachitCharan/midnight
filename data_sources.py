@@ -56,6 +56,50 @@ GEONAMES_COLUMNS = [
 GEONAMES_PATH = Path(__file__).parent / "data" / "cities15000.txt"
 
 
+def location_display_label(result: dict) -> str:
+    parts = [result.get("name"), result.get("admin1"), result.get("country")]
+    return ", ".join(str(part).strip() for part in parts if part is not None and str(part).strip())
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def geocode_search(name: str, count: int = 8) -> list[dict]:
+    """Return ordered, label-deduplicated Open-Meteo location matches."""
+    try:
+        response = requests.get(
+            GEOCODING_URL,
+            params={
+                "name": name.strip(),
+                "count": max(1, min(100, int(count))),
+                "language": "en",
+                "format": "json",
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        matches = []
+        seen_labels = set()
+        for raw in response.json().get("results") or []:
+            match = {
+                "name": raw.get("name", name),
+                "admin1": raw.get("admin1", "") or "",
+                "country": raw.get("country", "") or "",
+                "country_code": raw.get("country_code", "") or "",
+                "latitude": float(raw["latitude"]),
+                "longitude": float(raw["longitude"]),
+                "timezone": raw.get("timezone", "UTC") or "UTC",
+            }
+            if raw.get("population") is not None:
+                match["population"] = int(raw["population"])
+            match["display_label"] = location_display_label(match)
+            if match["display_label"] in seen_labels:
+                continue
+            seen_labels.add(match["display_label"])
+            matches.append(match)
+        return matches
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return []
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def geocode_location(query: str) -> tuple[dict | None, str | None]:
     try:
@@ -75,6 +119,7 @@ def geocode_location(query: str) -> tuple[dict | None, str | None]:
             "lon": float(result["longitude"]),
             "admin1": result.get("admin1", ""),
             "country": result.get("country", ""),
+            "country_code": result.get("country_code", "") or "",
             "timezone": result.get("timezone", "UTC"),
         }, None
     except (requests.RequestException, ValueError, KeyError, TypeError):

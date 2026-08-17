@@ -15,6 +15,8 @@ with nature or supports environmental health.**
 ## What it does
 
 - Scores current stargazing conditions only after astronomical darkness begins.
+- Disambiguates place-name searches and preserves the selected location while
+  recomputing results.
 - Explains cloud, modeled light pollution, moonlight, and atmospheric effects.
 - Finds the best hour tonight and compares the best hour across seven nights.
 - Ranks nearby modeled dark-site candidates and presents both a map and an
@@ -24,6 +26,8 @@ with nature or supports environmental health.**
   active major meteor showers.
 - Adds PM2.5 and aerosol context when Open-Meteo Air Quality is available.
 - Produces a downloadable night-sky plan.
+- Supports global locations with metric/imperial distance controls; US results
+  default to miles and all other country codes default to kilometers.
 
 ## Run locally
 
@@ -50,7 +54,7 @@ Artificial brightness uses Walker's Law (Walker, 1977): each nearby population
 center contributes population divided by distance in kilometers to the power
 2.5. Contributions inside 150 km are summed, then a log-scale calibration maps
 the index to a Bortle 1–9 estimate. Weather comes from Open-Meteo. Population
-centers come from the committed GeoNames `cities15000` dataset and are enriched
+centers come from the committed global GeoNames `cities15000` dataset and are enriched
 with checked Oregon/PNW population figures. No population-data network call is
 required. Optional OpenStreetMap Overpass enrichment can fill smaller towns but
 is never needed for correctness.
@@ -128,5 +132,6 @@ verification, demonstration, and submitted work.
 - `data_sources.py` — guarded keyless APIs and local GeoNames loading
 - `dark_sites.py` — bounded nearby-candidate grid search
 - `meteor_showers.py` — major annual-shower calendar
+- `units.py` — metric/imperial display conversion while models stay metric
 - `app.py` — accessible Streamlit interface
 - `test_logic.py` — dependency-free test runner

@@ -20,6 +20,8 @@ factor-by-factor explanation, best viewing window, seven-night comparison,
 Moon and naked-eye planet visibility, meteor-shower context, and ranked nearby
 dark-sky candidates. It shows candidates on a map and in an accessible text
 list, then generates a downloadable observing plan.
+Ambiguous names such as Portland present accessible location choices, and
+distance displays support both kilometers and miles for international use.
 
 ## How we built it
 

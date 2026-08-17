@@ -18,10 +18,11 @@ from astronomy import (
     visible_planets,
 )
 from dark_sites import find_dark_sites
-from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location
+from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
 from light_pollution import artificial_brightness, bortle_class, bortle_description, visibility_expectations
 from meteor_showers import meteor_activity
 from scoring import compute_stargazing_score, find_best_window, limiting_factor, score_label, summarize_nights
+from units import default_unit_system, distance_to_km, format_distance
 
 st.set_page_config(page_title="Umbra", page_icon="🌘", layout="centered")
 
@@ -41,21 +42,88 @@ st.write(
 st.info("Built for OregonHacks: technology that helps people reconnect with nature and supports environmental health.")
 
 with st.form("location_form"):
-    query = st.text_input("Location", placeholder="Portland, Oregon")
-    max_distance = st.slider("Maximum straight-line search distance", 25, 150, 100, 25, help="Road distance may be longer; verify access and conditions before traveling.")
+    query = st.text_input("Location", placeholder="Portland, Oregon", key="location_query")
     submitted = st.form_submit_button("Check tonight")
 
 if submitted:
     if not query.strip():
+        st.session_state["umbra_matches"] = []
+        st.session_state["umbra_search_error"] = None
         st.warning("Enter a city or place name.")
-        st.stop()
+    else:
+        with st.spinner("Finding matching locations…"):
+            matches = geocode_search(query)
+            location_error = None
+            if not matches:
+                # Preserve the original single-result path as a non-breaking fallback.
+                legacy, location_error = geocode_location(query)
+                if legacy is not None:
+                    matches = [{
+                        "name": legacy["name"], "admin1": legacy.get("admin1", ""),
+                        "country": legacy.get("country", ""), "country_code": legacy.get("country_code", ""),
+                        "latitude": legacy["lat"], "longitude": legacy["lon"],
+                        "timezone": legacy.get("timezone", "UTC"),
+                        "display_label": ", ".join(
+                            str(part).strip() for part in (legacy["name"], legacy.get("admin1"), legacy.get("country"))
+                            if part is not None and str(part).strip()
+                        ),
+                    }]
+            st.session_state["umbra_matches"] = matches
+            st.session_state["umbra_search_error"] = location_error if not matches else None
+            if matches:
+                st.session_state["location_choice"] = matches[0]["display_label"]
 
-    with st.spinner("Modeling tonight's sky…"):
-        location, location_error = geocode_location(query)
-    if location_error or location is None:
-        st.error(location_error or "Location search failed.")
-        st.stop()
+matches = st.session_state.get("umbra_matches", [])
+search_error = st.session_state.get("umbra_search_error")
+if search_error:
+    st.error(search_error)
 
+selected_match = None
+if len(matches) == 1:
+    selected_match = matches[0]
+    st.session_state.pop("location_choice", None)
+elif len(matches) >= 2:
+    labels = [match["display_label"] for match in matches]
+    if st.session_state.get("location_choice") not in labels:
+        st.session_state["location_choice"] = labels[0]
+    selected_label = st.selectbox(
+        "Which location did you mean?",
+        labels,
+        key="location_choice",
+    )
+    selected_match = next(match for match in matches if match["display_label"] == selected_label)
+
+if selected_match is not None:
+    location = {
+        "name": selected_match["name"], "admin1": selected_match.get("admin1", ""),
+        "country": selected_match.get("country", ""), "country_code": selected_match.get("country_code", ""),
+        "lat": selected_match["latitude"], "lon": selected_match["longitude"],
+        "timezone": selected_match.get("timezone", "UTC"),
+    }
+    country_code = location["country_code"].upper()
+    if st.session_state.get("unit_country_code") != country_code:
+        st.session_state["unit_system"] = default_unit_system(country_code)
+        st.session_state["unit_country_code"] = country_code
+    unit_system = st.sidebar.radio(
+        "Distance units",
+        ["Metric (km)", "Imperial (mi)"],
+        key="unit_system",
+    )
+    if unit_system == "Imperial (mi)":
+        distance_value = st.sidebar.slider(
+            "Maximum straight-line search distance (miles)", 15, 95, 60, 10,
+            key="max_distance_imperial",
+            help="Road distance may be longer; verify access and conditions before traveling.",
+        )
+    else:
+        distance_value = st.sidebar.slider(
+            "Maximum straight-line search distance (km)", 25, 150, 100, 25,
+            key="max_distance_metric",
+            help="Road distance may be longer; verify access and conditions before traveling.",
+        )
+    max_distance_km = distance_to_km(distance_value, unit_system)
+
+if selected_match is not None:
     st.subheader(f"{location['name']}, {location['admin1'] or location['country']}")
     try:
         local_zone = ZoneInfo(location["timezone"])
@@ -192,16 +260,18 @@ if submitted:
         st.info(air_error or "Air-quality detail is unavailable; forecast visibility remains the haze proxy.")
 
     st.subheader("Darkest modeled sites nearby")
-    sites = find_dark_sites(location["lat"], location["lon"], centers, max_distance, 8)
+    sites = find_dark_sites(location["lat"], location["lon"], centers, max_distance_km, 8)
     if sites:
         map_rows = [{
             **site,
+            "distance_display": format_distance(site["distance_km"], unit_system),
             "marker": "Dark-site candidate",
             "color": [216, 167, 255, 220],
         } for site in sites]
         map_rows.append({
             "name": location["name"], "lat": location["lat"], "lon": location["lon"],
             "bortle": bortle, "distance_km": 0, "darkness_score": 0,
+            "distance_display": format_distance(0, unit_system),
             "marker": "Your location", "kind": "Starting point", "color": [255, 190, 92, 255],
         })
         layer = pdk.Layer(
@@ -211,19 +281,19 @@ if submitted:
         view = pdk.ViewState(latitude=location["lat"], longitude=location["lon"], zoom=7)
         deck = pdk.Deck(
             layers=[layer], initial_view_state=view,
-            tooltip={"html": "<b>{name}</b><br/>{marker}<br/>Bortle {bortle}<br/>{distance_km} km straight-line"},
+            tooltip={"html": "<b>{name}</b><br/>{marker}<br/>Bortle {bortle}<br/>{distance_display} straight-line"},
             map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         )
         st.pydeck_chart(deck, width="stretch")
         st.caption(
             f"Map summary: {sites[0]['name']} is the darkest top-ranked candidate, "
-            f"{sites[0]['distance_km']:.0f} km away with modeled Bortle class {sites[0]['bortle']}. "
+            f"{format_distance(sites[0]['distance_km'], unit_system, 0)} away with modeled Bortle class {sites[0]['bortle']}. "
             "Purple markers are candidates; the gold marker is your starting location."
         )
         for index, site in enumerate(sites, 1):
             st.markdown(
                 f"**{index}. {site['name']} — Bortle {site['bortle']}**  \n"
-                f"{site['distance_km']:.1f} km straight-line · Darkness {site['darkness_score']:.0f}/100 · "
+                f"{format_distance(site['distance_km'], unit_system)} straight-line · Darkness {site['darkness_score']:.0f}/100 · "
                 f"{site['kind']} · `{site['lat']:.4f}, {site['lon']:.4f}`"
             )
         st.warning("These are modeled grid candidates, not verified observing sites. Check road access, closures, weather, and land rules before traveling.")
@@ -237,7 +307,7 @@ if submitted:
         if best else "No astronomical-darkness window in the forecast"
     )
     top_site_text = (
-        f"{sites[0]['name']} ({sites[0]['distance_km']:.1f} km straight-line, Bortle {sites[0]['bortle']})"
+        f"{sites[0]['name']} ({format_distance(sites[0]['distance_km'], unit_system)} straight-line, Bortle {sites[0]['bortle']})"
         if sites else "No modeled candidate"
     )
     score_text = f"{current_score:.0f}/100 ({score_label(current_score)})" if current_score is not None else "Not dark yet"

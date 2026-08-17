@@ -8,16 +8,18 @@ import requests
 from astronomy import (
     find_dark_window,
     is_astronomical_darkness,
+    moon_altitude,
     moon_illumination,
     sun_altitude,
     planet_altitude,
     visible_planets,
 )
 from light_pollution import artificial_brightness, bortle_class, darkness_score
-from scoring import compute_stargazing_score, limiting_factor, score_label, summarize_nights
-from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location
+from scoring import compute_stargazing_score, find_best_window, limiting_factor, score_label, summarize_nights
+from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
 from dark_sites import distance_km, find_dark_sites
 from meteor_showers import meteor_activity
+from units import default_unit_system, distance_to_km, format_distance
 
 UTC = timezone.utc
 
@@ -87,12 +89,15 @@ def test_static_population_data_requires_no_network() -> None:
 
 def test_network_failures_are_graceful() -> None:
     geocode_location.clear()
+    geocode_search.clear()
     fetch_forecast.clear()
     fetch_air_quality.clear()
     with patch("data_sources.requests.get", side_effect=requests.ConnectionError("offline")):
+        matches = geocode_search("Portland")
         location, geocode_error = geocode_location("Portland")
         forecast, forecast_error = fetch_forecast(45.5, -122.7)
         air_quality, air_error = fetch_air_quality(45.5, -122.7)
+    assert matches == []
     assert location is None and "unavailable" in geocode_error.lower()
     assert forecast == [] and "unavailable" in forecast_error.lower()
     assert air_quality == [] and "unavailable" in air_error.lower()
@@ -106,6 +111,24 @@ def test_empty_geocode_result_is_clean() -> None:
     with patch("data_sources.requests.get", return_value=response):
         location, error = geocode_location("not-a-real-place")
     assert location is None and "no matching" in error.lower()
+
+
+def test_geocode_search_normalizes_and_deduplicates() -> None:
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"results": [
+        {"name": "Portland", "admin1": "Oregon", "country": "United States", "country_code": "US", "latitude": 45.52, "longitude": -122.68, "population": 652503, "timezone": "America/Los_Angeles"},
+        {"name": "Portland", "admin1": "Oregon", "country": "United States", "country_code": "US", "latitude": 45.53, "longitude": -122.67},
+        {"name": "Solo", "admin1": None, "country": "Indonesia", "country_code": "ID", "latitude": -7.57, "longitude": 110.82},
+    ]}
+    geocode_search.clear()
+    with patch("data_sources.requests.get", return_value=response):
+        matches = geocode_search("Portland", count=8)
+    assert len(matches) == 2
+    assert matches[0]["display_label"] == "Portland, Oregon, United States"
+    assert matches[0]["population"] == 652503
+    assert matches[1]["display_label"] == "Solo, Indonesia"
+    assert "None" not in matches[1]["display_label"]
 
 
 def test_optional_overpass_failure_never_replaces_static_data() -> None:
@@ -136,6 +159,32 @@ def test_planet_positions_are_sane() -> None:
         assert 0 <= planet["azimuth"] < 360
     # NASA/JPL Horizons gives Saturn elevation 8.44° for Portland at this time.
     assert abs(planet_altitude(when, 45.5152, -122.6784, "Saturn") - 8.44) < 1.0
+
+
+def test_reykjavik_polar_summer_and_sydney_negative_latitude() -> None:
+    reykjavik_start = datetime(2026, 6, 21, tzinfo=UTC)
+    assert find_dark_window(reykjavik_start, 64.15, -21.94, 24) is None
+    reykjavik_hours = [{
+        "time": reykjavik_start + timedelta(hours=index), "cloud_cover": 20,
+        "brightness_index": 1, "visibility": 20000, "relative_humidity_2m": 50,
+    } for index in range(168)]
+    assert find_best_window(reykjavik_hours, 64.15, -21.94) == {}
+
+    sydney_day = datetime(2026, 12, 21, 2, tzinfo=UTC)
+    sydney_night = datetime(2026, 12, 21, 14, tzinfo=UTC)
+    assert sun_altitude(sydney_day, -33.87, 151.21) > 70
+    assert sun_altitude(sydney_night, -33.87, 151.21) < -20
+    assert sun_altitude(datetime(2026, 6, 21, 2, tzinfo=UTC), -33.87, 151.21) > 25
+    assert -90 <= moon_altitude(sydney_day, -33.87, 151.21) <= 90
+
+
+def test_metric_and_imperial_distance_paths() -> None:
+    assert default_unit_system("US") == "Imperial (mi)"
+    assert default_unit_system("JP") == "Metric (km)"
+    assert default_unit_system(None) == "Metric (km)"
+    assert abs(distance_to_km(10, "Imperial (mi)") - 16.09344) < 1e-6
+    assert format_distance(16.09344, "Imperial (mi)") == "10.0 mi"
+    assert format_distance(16.09344, "Metric (km)") == "16.1 km"
 
 
 def test_meteor_calendar_and_multi_night_summary() -> None:
