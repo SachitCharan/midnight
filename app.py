@@ -19,7 +19,18 @@ from astronomy import (
 )
 from dark_sites import find_dark_sites
 from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
-from light_pollution import artificial_brightness, bortle_class, bortle_description, visibility_expectations
+from interpretations import (
+    interpret_aerosol,
+    interpret_bortle,
+    interpret_clouds,
+    interpret_component,
+    interpret_darkness_window,
+    interpret_distance,
+    interpret_moon,
+    interpret_score,
+    visibility_snapshot,
+)
+from light_pollution import artificial_brightness, bortle_class, visibility_expectations
 from meteor_showers import meteor_activity
 from scoring import (
     build_score_timeline,
@@ -154,7 +165,7 @@ if selected_match is not None:
 
     if forecast_error or not forecast:
         st.metric("Modeled Bortle class", f"{bortle} / 9")
-        st.caption(bortle_description(bortle))
+        st.caption(interpret_bortle(bortle))
         st.caption("This is a modeled estimate, not a direct radiometric measurement.")
         st.subheader("What this sky reveals")
         st.write(f"**Likely visible:** {expectations['visible']}")
@@ -177,7 +188,7 @@ if selected_match is not None:
 
     if current_score is None:
         dark_window = find_dark_window(now, location["lat"], location["lon"])
-        st.warning("Not dark yet — the Sun is above astronomical twilight (−18°).")
+        st.warning("Not dark yet — twilight is still hiding faint stars.")
         if dark_window:
             wait = dark_window[0] - now
             hours, remainder = divmod(max(0, int(wait.total_seconds())), 3600)
@@ -185,17 +196,18 @@ if selected_match is not None:
             st.write(f"Astronomical darkness begins in about {hours} hr {minutes} min.")
     else:
         st.metric("Stargazing score now", f"{current_score:.0f} / 100", score_label(current_score))
+        st.caption(interpret_score(current_score))
         st.write(limiting_factor(subscores))
         st.subheader("Score breakdown")
+        st.write(f"Cloud cover: **{nearest['cloud_cover']:.0f}%**")
+        st.caption(interpret_clouds(nearest["cloud_cover"]))
         for factor, value in subscores.items():
-            st.write(f"{factor.replace('_', ' ').title()}: **{value:.0f} / 100**")
+            st.write(f"{factor.replace('_', ' ').title()} contribution: **{value:.0f} / 100**")
+            st.caption(interpret_component(factor, value))
 
     st.metric("Modeled Bortle class", f"{bortle} / 9")
-    st.caption(bortle_description(bortle))
+    st.caption(interpret_bortle(bortle))
     st.caption("This is a modeled estimate, not a direct radiometric measurement.")
-    st.subheader("What this sky reveals")
-    st.write(f"**Likely visible:** {expectations['visible']}")
-    st.write(f"**Hidden by skyglow:** {expectations['missing']}")
 
     current_hour = now.replace(minute=0, second=0, microsecond=0)
     upcoming_forecast = [row for row in forecast if row["time"] >= current_hour]
@@ -240,9 +252,13 @@ if selected_match is not None:
     elif best:
         local_start = best["start"].astimezone(local_zone)
         local_end = (best["end"] + timedelta(hours=1)).astimezone(local_zone)
+        if selected_dark_window is not None:
+            darkness_start = selected_dark_window[0].astimezone(local_zone)
+            darkness_end = selected_dark_window[1].astimezone(local_zone)
+            st.caption(interpret_darkness_window(darkness_start, darkness_end))
         st.write(
             f"Best viewing window: {local_start.strftime('%b %d, %I:%M %p')}–{local_end.strftime('%I:%M %p %Z')} "
-            f"with a peak modeled score of **{best['best_score']:.0f}/100**."
+            f"with a peak modeled score of **{best['best_score']:.0f}/100** — {interpret_score(best['best_score'])}"
         )
         timeline_rows = []
         for item in build_score_timeline(selected_forecast, location["lat"], location["lon"]):
@@ -331,44 +347,38 @@ if selected_match is not None:
         best_night_local = best_night["time"].astimezone(local_zone)
         st.caption(
             f"Seven-night summary: {best_night_local.strftime('%A, %b %d')} is strongest at "
-            f"{best_night['score']:.0f}/100; {selected_night_label} is selected for the detailed chart above."
+            f"{best_night['score']:.0f}/100 — {interpret_score(best_night['score'])} "
+            f"{selected_night_label} is selected for the detailed chart above."
         )
         st.selectbox("Choose a night to inspect", night_labels, key="selected_night")
     else:
         best_night = None
         st.info("No astronomical darkness appears in the next seven nights, so no nightly chart is shown.")
 
-    st.subheader("Moon, planets, and meteors")
+    st.subheader("What you can see tonight")
     observing_time = best["start"] if best else now
     illumination = moon_illumination(observing_time)
     phase = moon_phase_name(illumination, moon_is_waxing(observing_time))
+    selected_moon_altitude = moon_altitude(observing_time, location["lat"], location["lon"])
     st.write(
         f"**Moon:** {phase}, {illumination * 100:.0f}% illuminated, "
-        f"{moon_altitude(observing_time, location['lat'], location['lon']):.0f}° altitude at the selected observing time."
+        f"{selected_moon_altitude:.0f}° altitude at the selected observing time."
     )
+    st.caption(interpret_moon(illumination, selected_moon_altitude))
     planets = visible_planets(observing_time, location["lat"], location["lon"])
-    if planets:
-        for planet in planets:
-            st.write(
-                f"**{planet['name']}:** {planet['altitude']:.0f}° above the horizon toward "
-                f"{planet['direction']} (azimuth {planet['azimuth']:.0f}°)."
-            )
-    else:
-        st.write("No naked-eye planet is modeled above 10° at the selected observing time.")
-    st.caption("Planet positions are low-precision orbital-element estimates; terrain and buildings are not modeled.")
-
     meteors = meteor_activity(observing_time.astimezone(local_zone))
-    if meteors["active"]:
-        for shower in meteors["active"]:
-            st.write(
-                f"**Active meteor shower:** {shower['name']} — nominal peak "
-                f"{shower['peak_date'].strftime('%b %d')}, ideal maximum about {shower['zhr']} meteors/hour under perfect dark skies."
-            )
-    elif meteors["upcoming"]:
-        shower = meteors["upcoming"][0]
-        st.write(f"**Next major shower:** {shower['name']} peaks {shower['peak_date'].strftime('%b %d')}.")
-    else:
-        st.write("No major annual meteor shower is active or near peak in the next 45 days.")
+    observing_weather = min(forecast, key=lambda row: abs((row["time"] - observing_time).total_seconds()))
+    visibility = visibility_snapshot(
+        bortle, illumination, selected_moon_altitude, observing_weather["cloud_cover"],
+        [planet["name"] for planet in planets], meteors["active"],
+    )
+    st.write(f"**Milky Way:** {visibility['milky_way']}")
+    st.write(f"**Naked-eye planets:** {visibility['planets']}")
+    st.write(f"**Meteor showers:** {visibility['meteors']}")
+    st.write(f"**Deep-sky objects:** {visibility['deep_sky']}")
+    st.write(f"**Faintest stars:** {visibility['limiting_magnitude']}")
+    st.info(visibility["loss"])
+    st.caption("Planet positions are low-precision estimates; terrain and buildings are not modeled.")
 
     air_quality, air_error = fetch_air_quality(location["lat"], location["lon"])
     st.subheader("Haze and aerosols")
@@ -378,6 +388,7 @@ if selected_match is not None:
         aerosol = nearest_air["aerosol_optical_depth"]
         aerosol_text = f" and aerosol optical depth {aerosol:.2f}" if aerosol is not None else ""
         st.write(f"Forecast PM2.5 is **{pm_value:.1f} µg/m³**{aerosol_text}. Lower values generally mean clearer skies.")
+        st.caption(interpret_aerosol(aerosol, pm_value))
     else:
         st.info(air_error or "Air-quality detail is unavailable; forecast visibility remains the haze proxy.")
 
@@ -394,7 +405,7 @@ if selected_match is not None:
         map_rows = [{
             **site,
             "distance_display": format_distance(site["distance_km"], unit_system),
-            "bortle_meaning": bortle_description(site["bortle"]),
+            "bortle_meaning": interpret_bortle(site["bortle"]),
             "marker": "Dark-site candidate",
             "color": [216, 167, 255, 220],
         } for site in sites]
@@ -402,7 +413,7 @@ if selected_match is not None:
             "name": location["name"], "lat": location["lat"], "lon": location["lon"],
             "bortle": bortle, "distance_km": 0, "darkness_score": 0,
             "distance_display": format_distance(0, unit_system),
-            "bortle_meaning": bortle_description(bortle),
+            "bortle_meaning": interpret_bortle(bortle),
             "marker": "Your location", "kind": "Starting point", "color": [255, 190, 92, 255],
         })
         layer = pdk.Layer(
@@ -412,27 +423,27 @@ if selected_match is not None:
         view = pdk.ViewState(latitude=location["lat"], longitude=location["lon"], zoom=7)
         deck = pdk.Deck(
             layers=[layer], initial_view_state=view,
-            tooltip={"html": "<b>{name}</b><br/>{marker}<br/>Bortle {bortle}: {bortle_meaning}<br/>{distance_display} straight-line"},
+            tooltip={"html": "<b>{name}</b><br/>{marker}<br/>{bortle_meaning}<br/>{distance_display} straight-line"},
             map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         )
         st.pydeck_chart(deck, width="stretch")
         st.caption(
             f"Map summary: {sites[0]['name']} ranks first by {dark_site_sort.lower()}, "
-            f"{format_distance(sites[0]['distance_km'], unit_system, 0)} away with modeled Bortle class {sites[0]['bortle']}. "
+            f"{interpret_distance(sites[0]['distance_km'], unit_system)} {interpret_bortle(sites[0]['bortle'])} "
             "Purple markers are candidates; the gold marker is your starting location."
         )
         st.write(
-            f"**Starting location (gold marker):** {location['name']} — Bortle {bortle}: "
-            f"{bortle_description(bortle)} · "
+            f"**Starting location (gold marker):** {location['name']} — {interpret_bortle(bortle)} · "
             f"{format_distance(0, unit_system)} straight-line · "
             f"`{location['lat']:.4f}, {location['lon']:.4f}`"
         )
         for index, site in enumerate(sites, 1):
             st.markdown(
                 f"**{index}. {site['name']}**  \n"
-                f"{format_distance(site['distance_km'], unit_system)} straight-line · "
-                f"Estimated Bortle {site['bortle']} — {bortle_description(site['bortle'])}  \n"
-                f"Darkness {site['darkness_score']:.0f}/100 · {site['kind']} · "
+                f"{interpret_distance(site['distance_km'], unit_system)}  \n"
+                f"{interpret_bortle(site['bortle'])}  \n"
+                f"Darkness {site['darkness_score']:.0f}/100 — "
+                f"{interpret_component('light_pollution', site['darkness_score'])} · {site['kind']} · "
                 f"`{site['lat']:.4f}, {site['lon']:.4f}`"
             )
         st.warning(

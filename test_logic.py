@@ -16,6 +16,16 @@ from astronomy import (
     visible_planets,
 )
 from light_pollution import artificial_brightness, bortle_class, darkness_score
+from interpretations import (
+    interpret_aerosol,
+    interpret_bortle,
+    interpret_clouds,
+    interpret_darkness_window,
+    interpret_distance,
+    interpret_moon,
+    interpret_score,
+    visibility_snapshot,
+)
 from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, limiting_factor, normalize_hourly_data, score_label, summarize_nights
 from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
 from dark_sites import distance_km, find_dark_sites
@@ -29,6 +39,29 @@ def test_moon_illumination_bounded() -> None:
     start = datetime(2026, 1, 1, tzinfo=UTC)
     values = [moon_illumination(start + timedelta(hours=6 * i)) for i in range(60 * 4)]
     assert all(0.0 <= value <= 1.0 for value in values)
+
+
+def test_interpretations_change_with_low_mid_high_values() -> None:
+    groups = [
+        [interpret_score(value) for value in (20, 60, 90)],
+        [interpret_bortle(value) for value in (2, 5, 9)],
+        [interpret_moon(*value) for value in ((0.1, 10), (0.45, 30), (0.9, 60))],
+        [interpret_clouds(value) for value in (5, 50, 95)],
+        [interpret_aerosol(*value) for value in ((0.05, 5), (0.18, 15), (0.4, 40))],
+        [interpret_distance(value, "Metric (km)") for value in (10, 60, 140)],
+    ]
+    start = datetime(2026, 8, 17, 22, tzinfo=UTC)
+    groups.append([interpret_darkness_window(start, start + timedelta(hours=hours)) for hours in (1, 3, 7)])
+    assert all(len(set(group)) == 3 for group in groups)
+
+
+def test_visibility_snapshot_changes_with_sky_quality() -> None:
+    dark = visibility_snapshot(2, 0.1, -5, 5, ["Saturn"], [{"name": "Perseids", "zhr": 100}])
+    suburban = visibility_snapshot(6, 0.5, 30, 45, ["Saturn"], [{"name": "Perseids", "zhr": 100}])
+    city = visibility_snapshot(9, 0.9, 60, 90, [], [{"name": "Perseids", "zhr": 100}])
+    assert len({dark["milky_way"], suburban["milky_way"], city["milky_way"]}) >= 2
+    assert len({dark["loss"], suburban["loss"], city["loss"]}) == 3
+    assert "Saturn" in dark["planets"] and "No naked-eye planet" in city["planets"]
 
 
 def test_lunar_cycle_length() -> None:
