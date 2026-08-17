@@ -380,6 +380,11 @@ if selected_match is not None:
             f"{format_distance(sites[0]['distance_km'], unit_system, 0)} away with modeled Bortle class {sites[0]['bortle']}. "
             "Purple markers are candidates; the gold marker is your starting location."
         )
+        st.write(
+            f"**Starting location (gold marker):** {location['name']} — Bortle {bortle} · "
+            f"{format_distance(0, unit_system)} straight-line · "
+            f"`{location['lat']:.4f}, {location['lon']:.4f}`"
+        )
         for index, site in enumerate(sites, 1):
             st.markdown(
                 f"**{index}. {site['name']} — Bortle {site['bortle']}**  \n"
