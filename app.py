@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -54,18 +55,338 @@ from units import default_unit_system, distance_to_km, format_distance
 
 st.set_page_config(page_title="Midnight", page_icon="🌌", layout="centered")
 
-st.markdown("""
+if "midnight_starfield" not in st.session_state:
+    star_rng = random.Random(20260817)
+
+    def build_star_layer(count: int, min_alpha: float, max_alpha: float) -> str:
+        return ",".join(
+            f"{star_rng.uniform(0, 100):.2f}vw {star_rng.uniform(0, 100):.2f}vh "
+            f"0 {star_rng.choice((0, 0, 1))}px rgba(247,245,240,{star_rng.uniform(min_alpha, max_alpha):.2f})"
+            for _ in range(count)
+        )
+
+    st.session_state["midnight_starfield"] = {
+        "far": build_star_layer(145, 0.18, 0.45),
+        "mid": build_star_layer(82, 0.32, 0.68),
+        "near": build_star_layer(38, 0.55, 0.92),
+    }
+
+starfield = st.session_state["midnight_starfield"]
+st.markdown(f"""
 <style>
-div[data-testid="stMetric"] { border: 1px solid #62698c; border-radius: .7rem; padding: .75rem; }
-.stCaption { color: #d5d7e6 !important; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {{
+    --midnight-navy: #111629;
+    --midnight-panel: #29304D;
+    --midnight-gold: #F2B880;
+    --midnight-ivory: #F7F5F0;
+    --midnight-violet: #8E78C7;
+    --midnight-border: rgba(151, 161, 205, 0.28);
+}}
+
+html, body, [class*="css"] {{ font-family: "Inter", sans-serif; }}
+body {{ background: var(--midnight-navy); }}
+[data-testid="stAppViewContainer"] {{
+    background:
+        radial-gradient(circle at 15% 10%, rgba(103, 82, 154, 0.16), transparent 34rem),
+        radial-gradient(circle at 88% 28%, rgba(70, 91, 151, 0.12), transparent 32rem),
+        linear-gradient(180deg, rgba(17, 22, 41, 0.80), rgba(17, 22, 41, 0.94));
+}}
+[data-testid="stAppViewContainer"] > .main {{ position: relative; z-index: 2; }}
+[data-testid="stHeader"] {{ background: rgba(17, 22, 41, 0.72); backdrop-filter: blur(14px); }}
+[data-testid="stToolbar"] {{ z-index: 5; }}
+.block-container {{ max-width: 920px; padding-top: 2.2rem; padding-bottom: 6rem; }}
+
+h1, h2, h3, .midnight-hero {{ font-family: "Space Grotesk", "Inter", sans-serif !important; }}
+h3 {{
+    margin-top: 2.4rem !important;
+    letter-spacing: -0.025em;
+}}
+h3::before {{
+    content: "";
+    display: inline-block;
+    width: 0.48em;
+    height: 0.48em;
+    margin-right: 0.55rem;
+    border-radius: 2px;
+    background: var(--midnight-gold);
+    transform: rotate(45deg) translateY(-0.05em);
+    box-shadow: 0 0 16px rgba(242, 184, 128, 0.5);
+}}
+
+.midnight-star-layer {{
+    position: fixed;
+    top: 0;
+    left: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+    will-change: transform;
+}}
+.midnight-stars-far {{
+    width: 1px; height: 1px; box-shadow: {starfield['far']};
+    animation: midnight-drift-far 120s ease-in-out infinite alternate;
+}}
+.midnight-stars-mid {{
+    width: 1.5px; height: 1.5px; box-shadow: {starfield['mid']};
+    animation: midnight-drift-mid 88s ease-in-out infinite alternate;
+}}
+.midnight-stars-near {{
+    width: 2px; height: 2px; box-shadow: {starfield['near']};
+    animation: midnight-drift-near 64s ease-in-out infinite alternate;
+}}
+@keyframes midnight-drift-far {{ to {{ transform: translate3d(-4px, 6px, 0); }} }}
+@keyframes midnight-drift-mid {{ to {{ transform: translate3d(8px, -7px, 0); }} }}
+@keyframes midnight-drift-near {{ to {{ transform: translate3d(-10px, -6px, 0); }} }}
+
+.midnight-shooting-star {{
+    position: fixed;
+    z-index: 1;
+    width: 150px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(242,184,128,0.35), #F7F5F0);
+    filter: drop-shadow(0 0 5px rgba(242,184,128,0.9));
+    transform: rotate(-28deg);
+}}
+.midnight-shooting-star::after {{
+    content: "";
+    position: absolute;
+    right: -2px;
+    top: -2px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #F7F5F0;
+    box-shadow: 0 0 12px #F2B880;
+}}
+.shooting-one {{ top: 14vh; left: -12vw; animation: shoot-one 13s ease-in infinite 2s; }}
+.shooting-two {{ top: 34vh; left: 52vw; animation: shoot-two 18s ease-in infinite 8s; }}
+.shooting-three {{ top: 8vh; left: 76vw; animation: shoot-three 23s ease-in infinite 14s; }}
+@keyframes shoot-one {{
+    0%, 76% {{ opacity: 0; transform: translate3d(0,0,0) rotate(-28deg); }}
+    78% {{ opacity: 1; }}
+    84% {{ opacity: 0; transform: translate3d(76vw,44vh,0) rotate(-28deg); }}
+    100% {{ opacity: 0; }}
+}}
+@keyframes shoot-two {{
+    0%, 80% {{ opacity: 0; transform: translate3d(0,0,0) rotate(-28deg); }}
+    82% {{ opacity: 0.9; }}
+    88% {{ opacity: 0; transform: translate3d(52vw,30vh,0) rotate(-28deg); }}
+    100% {{ opacity: 0; }}
+}}
+@keyframes shoot-three {{
+    0%, 84% {{ opacity: 0; transform: translate3d(0,0,0) rotate(-28deg); }}
+    86% {{ opacity: 0.8; }}
+    91% {{ opacity: 0; transform: translate3d(31vw,20vh,0) rotate(-28deg); }}
+    100% {{ opacity: 0; }}
+}}
+
+.midnight-hero {{
+    position: relative;
+    overflow: hidden;
+    padding: 3.35rem 3rem 3rem;
+    margin: 0 0 1.6rem;
+    border: 1px solid rgba(242, 184, 128, 0.24);
+    border-radius: 28px;
+    background:
+        radial-gradient(circle at 78% 26%, rgba(242,184,128,0.18) 0 1px, transparent 2px),
+        radial-gradient(circle at 68% 20%, rgba(247,245,240,0.45) 0 1px, transparent 2px),
+        radial-gradient(circle at 88% 58%, rgba(247,245,240,0.35) 0 1px, transparent 2px),
+        linear-gradient(155deg, rgba(23,29,54,0.96) 5%, rgba(65,53,102,0.88) 64%, rgba(161,102,91,0.46) 95%, rgba(242,184,128,0.54) 100%);
+    box-shadow: 0 24px 65px rgba(2,5,18,0.38), inset 0 1px 0 rgba(255,255,255,0.05);
+}}
+.midnight-hero::after {{
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(242,184,128,0.9), transparent);
+}}
+.midnight-eyebrow {{
+    color: var(--midnight-gold);
+    font: 600 0.73rem/1 "Inter", sans-serif;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 0.9rem;
+}}
+.midnight-hero h1 {{
+    margin: 0;
+    color: var(--midnight-ivory);
+    font-size: clamp(3rem, 9vw, 5.6rem);
+    line-height: 0.95;
+    letter-spacing: -0.075em;
+    text-shadow: 0 8px 34px rgba(4,7,22,0.5);
+}}
+.midnight-hero p {{
+    max-width: 650px;
+    margin: 1.25rem 0 0;
+    color: rgba(247,245,240,0.82);
+    font-size: 1.03rem;
+    line-height: 1.7;
+}}
+
+div[data-testid="stForm"],
+div[data-testid="stVerticalBlockBorderWrapper"],
+div[data-testid="stMetric"],
+div[data-testid="stVegaLiteChart"],
+div[data-testid="stPydeckChart"] {{
+    border: 1px solid var(--midnight-border) !important;
+    border-radius: 20px !important;
+    background: linear-gradient(145deg, rgba(41,48,77,0.78), rgba(23,29,53,0.72)) !important;
+    box-shadow: 0 16px 42px rgba(3,6,20,0.22), inset 0 1px 0 rgba(255,255,255,0.035);
+}}
+div[data-testid="stForm"] {{ padding: 1.1rem 1.1rem 0.35rem; }}
+div[data-testid="stMetric"] {{ padding: 1rem 1.15rem; }}
+div[data-testid="stVegaLiteChart"], div[data-testid="stPydeckChart"] {{ padding: 0.45rem; overflow: hidden; }}
+
+div[data-baseweb="input"] > div,
+div[data-baseweb="select"] > div,
+div[data-testid="stTextInput"] input {{
+    background: rgba(17,22,41,0.58) !important;
+    border-color: rgba(151,161,205,0.26) !important;
+    border-radius: 12px !important;
+}}
+div[data-baseweb="input"]:focus-within > div,
+div[data-baseweb="select"]:focus-within > div {{
+    border-color: rgba(242,184,128,0.75) !important;
+    box-shadow: 0 0 0 3px rgba(242,184,128,0.10) !important;
+}}
+.stButton > button, .stFormSubmitButton > button, .stDownloadButton > button {{
+    border: 1px solid rgba(242,184,128,0.42) !important;
+    border-radius: 12px !important;
+    background: linear-gradient(135deg, rgba(242,184,128,0.96), rgba(202,132,116,0.94)) !important;
+    color: #111629 !important;
+    font-weight: 700 !important;
+    box-shadow: 0 10px 25px rgba(2,5,18,0.22);
+    transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}}
+.stButton > button:hover, .stFormSubmitButton > button:hover, .stDownloadButton > button:hover {{
+    transform: translateY(-2px);
+    filter: brightness(1.05);
+    box-shadow: 0 14px 32px rgba(242,184,128,0.16);
+}}
+
+div[data-baseweb="notification"], div[data-testid="stAlertContainer"] {{
+    border-radius: 14px !important;
+    border: 1px solid rgba(242,184,128,0.34) !important;
+    box-shadow: 0 12px 28px rgba(2,5,18,0.18);
+    overflow: hidden;
+}}
+div[data-baseweb="notification"] svg {{ color: var(--midnight-gold) !important; fill: var(--midnight-gold) !important; }}
+[data-testid="stAlertContentInfo"] {{ background: rgba(61,72,119,0.68) !important; color: var(--midnight-ivory) !important; }}
+[data-testid="stAlertContentWarning"] {{ background: rgba(115,82,70,0.68) !important; color: var(--midnight-ivory) !important; }}
+[data-testid="stAlertContentError"] {{ background: rgba(92,55,82,0.78) !important; color: #F6D8D5 !important; }}
+[data-testid="stAlertContentSuccess"] {{ background: rgba(63,87,91,0.72) !important; color: var(--midnight-ivory) !important; }}
+
+.stCaption {{ color: #d5d7e6 !important; line-height: 1.55 !important; }}
+hr {{ border-color: rgba(151,161,205,0.20) !important; }}
+a {{ color: #F2B880 !important; text-underline-offset: 3px; }}
+
+.midnight-score-card {{
+    display: grid;
+    grid-template-columns: minmax(240px, 0.9fr) minmax(220px, 1.1fr);
+    align-items: center;
+    gap: 1rem;
+    margin: 0.4rem 0 1.35rem;
+    padding: 1.2rem 1.5rem 1.1rem;
+    border: 1px solid rgba(242,184,128,0.28);
+    border-radius: 24px;
+    background: linear-gradient(145deg, rgba(41,48,77,0.90), rgba(20,26,48,0.88));
+    box-shadow: 0 20px 48px rgba(2,5,18,0.30), inset 0 1px 0 rgba(255,255,255,0.04);
+}}
+.midnight-score-kicker {{
+    color: rgba(247,245,240,0.62);
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+}}
+.midnight-score-label {{
+    display: inline-flex;
+    align-items: center;
+    margin-top: 0.75rem;
+    padding: 0.36rem 0.7rem;
+    border: 1px solid rgba(242,184,128,0.34);
+    border-radius: 999px;
+    color: var(--midnight-gold);
+    background: rgba(242,184,128,0.08);
+    font-weight: 700;
+    font-size: 0.88rem;
+}}
+.midnight-gauge {{ width: 100%; max-height: 185px; overflow: visible; }}
+.gauge-score {{
+    fill: var(--midnight-ivory);
+    font: 700 3.1rem "Space Grotesk", sans-serif;
+    letter-spacing: -0.05em;
+}}
+.gauge-total {{ fill: rgba(247,245,240,0.56); font: 600 0.8rem "Inter", sans-serif; letter-spacing: 0.12em; }}
+
+@media (max-width: 700px) {{
+    .block-container {{ padding: 1rem 1rem 4rem; }}
+    .midnight-hero {{ padding: 2.5rem 1.5rem 2.2rem; border-radius: 22px; }}
+    .midnight-score-card {{ grid-template-columns: 1fr; text-align: center; padding-inline: 1rem; }}
+    .midnight-gauge {{ max-height: 160px; }}
+}}
+@media (prefers-reduced-motion: reduce) {{
+    *, *::before, *::after {{ scroll-behavior: auto !important; transition: none !important; }}
+    .midnight-star-layer {{ animation: none !important; }}
+    .midnight-shooting-star {{ display: none !important; }}
+}}
 </style>
+<div class="midnight-star-layer midnight-stars-far" aria-hidden="true"></div>
+<div class="midnight-star-layer midnight-stars-mid" aria-hidden="true"></div>
+<div class="midnight-star-layer midnight-stars-near" aria-hidden="true"></div>
+<div class="midnight-shooting-star shooting-one" aria-hidden="true"></div>
+<div class="midnight-shooting-star shooting-two" aria-hidden="true"></div>
+<div class="midnight-shooting-star shooting-three" aria-hidden="true"></div>
 """, unsafe_allow_html=True)
 
-st.title("MIDNIGHT")
-st.caption(
-    "See whether the sky is worth watching tonight—and what is limiting it. "
-    "Built for the world to help people reconnect with nature and support environmental health."
-)
+st.markdown("""
+<section class="midnight-hero">
+    <div class="midnight-eyebrow">Night-sky intelligence</div>
+    <h1>MIDNIGHT</h1>
+    <p>See whether the sky is worth watching tonight—and what is limiting it.
+    Built for the world to help people reconnect with nature and support environmental health.</p>
+</section>
+""", unsafe_allow_html=True)
+
+
+def render_score_gauge(score: float, label: str) -> None:
+    bounded_score = max(0.0, min(100.0, float(score)))
+    st.markdown(f"""
+    <div class="midnight-score-card">
+        <div>
+            <div class="midnight-score-kicker">Stargazing score now</div>
+            <div class="midnight-score-label">{label}</div>
+        </div>
+        <svg class="midnight-gauge" viewBox="0 0 260 160" role="img"
+             aria-label="Stargazing score {bounded_score:.0f} out of 100, {label}">
+            <defs>
+                <linearGradient id="midnight-score-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#B76572" />
+                    <stop offset="52%" stop-color="#D98A6F" />
+                    <stop offset="100%" stop-color="#F2B880" />
+                </linearGradient>
+                <filter id="midnight-gauge-glow" x="-30%" y="-30%" width="160%" height="160%">
+                    <feGaussianBlur stdDeviation="3" result="blur" />
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+            </defs>
+            <path d="M 30 132 A 100 100 0 0 1 230 132" fill="none"
+                  stroke="rgba(151,161,205,0.18)" stroke-width="14" stroke-linecap="round"
+                  pathLength="100" />
+            <path d="M 30 132 A 100 100 0 0 1 230 132" fill="none"
+                  stroke="url(#midnight-score-gradient)" stroke-width="14" stroke-linecap="round"
+                  pathLength="100" stroke-dasharray="{bounded_score:.1f} 100"
+                  filter="url(#midnight-gauge-glow)" />
+            <text x="130" y="108" text-anchor="middle" class="gauge-score">{bounded_score:.0f}</text>
+            <text x="130" y="130" text-anchor="middle" class="gauge-total">OUT OF 100</text>
+        </svg>
+    </div>
+    """, unsafe_allow_html=True)
 
 with st.form("location_form"):
     search_columns = st.columns([5, 1])
@@ -175,17 +496,18 @@ if selected_match is not None:
     expectations = visibility_expectations(bortle)
 
     if forecast_error or not forecast:
-        st.metric("Modeled Bortle class", f"{bortle} / 9")
-        st.caption(interpret_bortle(bortle))
-        st.caption(
+        fallback_sky_section = st.container(border=True)
+        fallback_sky_section.metric("Modeled Bortle class", f"{bortle} / 9")
+        fallback_sky_section.caption(interpret_bortle(bortle))
+        fallback_sky_section.caption(
             "Estimated from population density using Walker's Law. This cannot account for local "
             "lighting ordinances — communities with dark-sky policies, like Flagstaff, are darker "
             "than this model predicts."
         )
-        st.subheader("What this sky reveals")
-        st.write(f"**Likely visible:** {expectations['visible']}")
-        st.write(f"**Hidden by skyglow:** {expectations['missing']}")
-        st.warning(forecast_error or "No forecast hours were returned.")
+        fallback_sky_section.subheader("What this sky reveals")
+        fallback_sky_section.write(f"**Likely visible:** {expectations['visible']}")
+        fallback_sky_section.write(f"**Hidden by skyglow:** {expectations['missing']}")
+        fallback_sky_section.warning(forecast_error or "No forecast hours were returned.")
         st.stop()
 
     forecast = normalize_hourly_data(forecast)
@@ -210,19 +532,21 @@ if selected_match is not None:
             minutes = remainder // 60
             st.write(f"Astronomical darkness begins in about {hours} hr {minutes} min.")
     else:
-        st.metric("Stargazing score now", f"{current_score:.0f} / 100", score_label(current_score))
+        render_score_gauge(current_score, score_label(current_score))
         st.caption(interpret_score(current_score))
         st.write(limiting_factor(subscores))
-        st.subheader("Score breakdown")
-        st.write(f"Cloud cover: **{nearest['cloud_cover']:.0f}%**")
-        st.caption(interpret_clouds(nearest["cloud_cover"]))
+        score_breakdown_section = st.container(border=True)
+        score_breakdown_section.subheader("Score breakdown")
+        score_breakdown_section.write(f"Cloud cover: **{nearest['cloud_cover']:.0f}%**")
+        score_breakdown_section.caption(interpret_clouds(nearest["cloud_cover"]))
         for factor, value in subscores.items():
-            st.write(f"{factor.replace('_', ' ').title()} contribution: **{value:.0f} / 100**")
-            st.caption(interpret_component(factor, value))
+            score_breakdown_section.write(f"{factor.replace('_', ' ').title()} contribution: **{value:.0f} / 100**")
+            score_breakdown_section.caption(interpret_component(factor, value))
 
-    st.metric("Modeled Bortle class", f"{bortle} / 9")
-    st.caption(interpret_bortle(bortle))
-    st.caption(
+    sky_model_section = st.container(border=True)
+    sky_model_section.metric("Modeled Bortle class", f"{bortle} / 9")
+    sky_model_section.caption(interpret_bortle(bortle))
+    sky_model_section.caption(
         "Estimated from population density using Walker's Law. This cannot account for local "
         "lighting ordinances — communities with dark-sky policies, like Flagstaff, are darker "
         "than this model predicts."
@@ -243,8 +567,9 @@ if selected_match is not None:
         st.session_state["night_location_key"] = night_location_key
         st.session_state["selected_night"] = night_labels[0] if night_labels else None
 
+    night_detail_section = st.container(border=True)
     selected_night_label = (
-        st.selectbox("Choose a night to inspect", night_labels, key="selected_night")
+        night_detail_section.selectbox("Choose a night to inspect", night_labels, key="selected_night")
         if night_labels else None
     )
     selected_view = next(
@@ -261,10 +586,10 @@ if selected_match is not None:
         if night_labels and selected_night_label == night_labels[0]
         else f"Selected night — {selected_night_label}"
     )
-    st.subheader(chart_a_title)
+    night_detail_section.subheader(chart_a_title)
     flat_night = False
     if not complete_dark_window:
-        st.warning(
+        night_detail_section.warning(
             "The forecast does not cover this night’s full astronomical-darkness window, "
             "so Midnight will not report a best window from partial data."
         )
@@ -279,19 +604,19 @@ if selected_match is not None:
         if selected_dark_window is not None:
             darkness_start = selected_dark_window[0].astimezone(local_zone)
             darkness_end = selected_dark_window[1].astimezone(local_zone)
-            st.caption(interpret_darkness_window(darkness_start, darkness_end))
+            night_detail_section.caption(interpret_darkness_window(darkness_start, darkness_end))
             chart_edge_padding = timedelta(minutes=10)
             chart_time_domain = [
                 (darkness_start - chart_edge_padding).isoformat(),
                 (darkness_end + chart_edge_padding).isoformat(),
             ]
         if flat_night:
-            st.write(
+            night_detail_section.write(
                 f"Conditions barely change {selected_period} ({score_min:.0f}–{score_max:.0f}). "
                 "Any time in the darkness window works equally well."
             )
         else:
-            st.write(
+            night_detail_section.write(
                 f"Best viewing window: {local_start.strftime('%b %d, %I:%M %p')}–{local_end.strftime('%I:%M %p %Z')} "
                 f"with a peak modeled score of **{best['best_score']:.0f}/100** — {interpret_score(best['best_score'])}"
             )
@@ -330,7 +655,7 @@ if selected_match is not None:
                 "Best window": False, "Point type": "Current time",
             })
         timeline = pd.DataFrame(timeline_rows).sort_values("Local time").drop_duplicates("Local time")
-        st.vega_lite_chart(timeline, {
+        night_detail_section.vega_lite_chart(timeline, {
             "height": 370,
             "padding": {"left": 25, "right": 10, "top": 10, "bottom": 55},
             "layer": [
@@ -399,27 +724,28 @@ if selected_match is not None:
         limitation_period = "tonight" if selected_night_label == night_labels[0] else "that night"
         limitation = limiting_factor(peak_hour["subscores"], limitation_period)
         if flat_night:
-            st.caption(
+            night_detail_section.caption(
                 f"The modeled score stays between {score_min:.0f} and {score_max:.0f} {selected_period}; "
                 f"{limitation[0].lower() + limitation[1:]}"
             )
         else:
-            st.caption(
+            night_detail_section.caption(
                 f"{summary_prefix}: conditions peak from {local_start.strftime('%I:%M %p')}–{local_end.strftime('%I:%M %p')} "
                 f"at {best['best_score']:.0f}/100; {limitation[0].lower() + limitation[1:]}"
             )
         if flat_night:
-            st.caption("Legend: the line is the hourly stargazing score; no best-window band is shown because conditions are nearly constant.")
+            night_detail_section.caption("Legend: the line is the hourly stargazing score; no best-window band is shown because conditions are nearly constant.")
         else:
-            st.caption(
+            night_detail_section.caption(
                 "Legend: the line is the hourly stargazing score; the highlighted band is the best window; "
                 "gaps are daylight, when no score is calculated."
             )
-        st.caption("Scale: 85–100 Excellent · 70–84 Good · 50–69 Fair · 30–49 Poor · below 30 Don’t bother.")
+        night_detail_section.caption("Scale: 85–100 Excellent · 70–84 Good · 50–69 Fair · 30–49 Poor · below 30 Don’t bother.")
     else:
-        st.info("No astronomical darkness occurs for this location on the selected night.")
+        night_detail_section.info("No astronomical darkness occurs for this location on the selected night.")
 
-    st.subheader("Next 7 nights")
+    night_summary_section = st.container(border=True)
+    night_summary_section.subheader("Next 7 nights")
     if nights:
         best_night = max(nights, key=lambda night: night["score"])
         night_chart = pd.DataFrame({
@@ -427,7 +753,7 @@ if selected_match is not None:
             "Best score": [night["score"] for night in nights],
             "Selected": [label == selected_night_label for label in night_labels],
         })
-        st.vega_lite_chart(night_chart, {
+        night_summary_section.vega_lite_chart(night_chart, {
             "padding": {"left": 20, "right": 10, "top": 5, "bottom": 10},
             "mark": {"type": "bar", "cornerRadiusTopLeft": 4, "cornerRadiusTopRight": 4},
             "encoding": {
@@ -445,25 +771,26 @@ if selected_match is not None:
             },
         }, width="stretch")
         best_night_local = best_night["time"].astimezone(local_zone)
-        st.caption(
+        night_summary_section.caption(
             f"Seven-night summary: {best_night_local.strftime('%A, %b %d')} is strongest at "
             f"{best_night['score']:.0f}/100 — {interpret_score(best_night['score'])} "
             f"{selected_night_label} is selected for the detailed chart above."
         )
     else:
         best_night = None
-        st.info("No astronomical darkness appears in the next seven nights, so no nightly chart is shown.")
+        night_summary_section.info("No astronomical darkness appears in the next seven nights, so no nightly chart is shown.")
 
-    st.subheader("What you can see tonight")
+    visibility_section = st.container(border=True)
+    visibility_section.subheader("What you can see tonight")
     observing_time = best["start"] if best else now
     illumination = moon_illumination(observing_time)
     phase = moon_phase_name(illumination, moon_is_waxing(observing_time))
     selected_moon_altitude = moon_altitude(observing_time, location["lat"], location["lon"])
-    st.write(
+    visibility_section.write(
         f"**Moon:** {phase}, {illumination * 100:.0f}% illuminated, "
         f"{selected_moon_altitude:.0f}° altitude at the selected observing time."
     )
-    st.caption(interpret_moon(illumination, selected_moon_altitude))
+    visibility_section.caption(interpret_moon(illumination, selected_moon_altitude))
     planets = visible_planets(observing_time, location["lat"], location["lon"])
     meteors = meteor_activity(observing_time.astimezone(local_zone))
     observing_weather = min(forecast, key=lambda row: abs((row["time"] - observing_time).total_seconds()))
@@ -471,36 +798,37 @@ if selected_match is not None:
         bortle, illumination, selected_moon_altitude, observing_weather["cloud_cover"],
         [planet["name"] for planet in planets], meteors["active"],
     )
-    st.write(f"**Milky Way:** {visibility['milky_way']}")
-    st.write(f"**Naked-eye planets:** {visibility['planets']}")
-    st.write(f"**Meteor showers:** {visibility['meteors']}")
-    st.write(f"**Deep-sky objects:** {visibility['deep_sky']}")
-    st.write(f"**Faintest stars:** {visibility['limiting_magnitude']}")
-    st.info(visibility["loss"])
-    st.caption("Planet positions are low-precision estimates; terrain and buildings are not modeled.")
+    visibility_section.write(f"**Milky Way:** {visibility['milky_way']}")
+    visibility_section.write(f"**Naked-eye planets:** {visibility['planets']}")
+    visibility_section.write(f"**Meteor showers:** {visibility['meteors']}")
+    visibility_section.write(f"**Deep-sky objects:** {visibility['deep_sky']}")
+    visibility_section.write(f"**Faintest stars:** {visibility['limiting_magnitude']}")
+    visibility_section.info(visibility["loss"])
+    visibility_section.caption("Planet positions are low-precision estimates; terrain and buildings are not modeled.")
 
-    st.subheader("Cloud layers, fog, and smoke")
+    atmosphere_section = st.container(border=True)
+    atmosphere_section.subheader("Cloud layers, fog, and smoke")
     low_cloud = nearest.get("cloud_cover_low", nearest["cloud_cover"])
     mid_cloud = nearest.get("cloud_cover_mid", nearest["cloud_cover"])
     high_cloud = nearest.get("cloud_cover_high", nearest["cloud_cover"])
-    st.write(
+    atmosphere_section.write(
         f"Cloud layers: **{low_cloud:.0f}% low · {mid_cloud:.0f}% middle · {high_cloud:.0f}% high**"
     )
-    st.caption(interpret_cloud_layers(low_cloud, mid_cloud, high_cloud))
+    atmosphere_section.caption(interpret_cloud_layers(low_cloud, mid_cloud, high_cloud))
 
     temperature = nearest.get("temperature_2m", 10.0)
     dew_point = nearest.get("dew_point_2m", temperature - 5.0)
     wind_speed = nearest.get("wind_speed_10m", 15.0)
     dew_point_spread = temperature - dew_point
     fog_likely, fog_meaning = interpret_fog(temperature, dew_point, wind_speed)
-    st.write(
+    atmosphere_section.write(
         f"Fog inputs: **{dew_point_spread:.1f}°C temperature–dew point spread · "
         f"{wind_speed:.1f} km/h wind**"
     )
     if fog_likely:
-        st.warning(f"Fog risk: {fog_meaning}")
+        atmosphere_section.warning(f"Fog risk: {fog_meaning}")
     else:
-        st.caption(f"Fog risk: {fog_meaning}")
+        atmosphere_section.caption(f"Fog risk: {fog_meaning}")
 
     air_quality, air_error = fetch_air_quality(location["lat"], location["lon"])
     if air_quality:
@@ -508,23 +836,24 @@ if selected_match is not None:
         pm_value = nearest_air["pm2_5"]
         aerosol = nearest_air["aerosol_optical_depth"]
         aerosol_text = f" and aerosol optical depth {aerosol:.2f}" if aerosol is not None else ""
-        st.write(f"Forecast PM2.5 is **{pm_value:.1f} µg/m³**{aerosol_text}. Lower values generally mean clearer skies.")
-        st.caption(interpret_aerosol(aerosol, pm_value))
+        atmosphere_section.write(f"Forecast PM2.5 is **{pm_value:.1f} µg/m³**{aerosol_text}. Lower values generally mean clearer skies.")
+        atmosphere_section.caption(interpret_aerosol(aerosol, pm_value))
         smoke_meaning = interpret_smoke(pm_value)
         if pm_value >= 25:
-            st.warning(f"Smoke signal: {smoke_meaning}")
+            atmosphere_section.warning(f"Smoke signal: {smoke_meaning}")
         else:
-            st.caption(f"Smoke signal: {smoke_meaning}")
+            atmosphere_section.caption(f"Smoke signal: {smoke_meaning}")
     else:
-        st.info(air_error or "Air-quality detail is unavailable; forecast visibility remains the haze proxy.")
+        atmosphere_section.info(air_error or "Air-quality detail is unavailable; forecast visibility remains the haze proxy.")
 
-    st.subheader("Dark-sky candidates nearby")
+    dark_site_section = st.container(border=True)
+    dark_site_section.subheader("Dark-sky candidates nearby")
     dark_site_sort = "Best balance"
     if bortle <= 4:
         sites = []
         osm_lookup_succeeded = False
     else:
-        dark_site_sort = st.selectbox(
+        dark_site_sort = dark_site_section.selectbox(
             "Sort dark-site candidates by",
             ["Best balance", "Darkest sky", "Shortest trip"],
             key="dark_site_sort",
@@ -586,25 +915,25 @@ if selected_match is not None:
             tooltip={"html": "<b>{name}</b><br/>{marker}<br/>{bortle_meaning}<br/>{access_label}<br/>{distance_display} straight-line"},
             map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         )
-        st.pydeck_chart(deck, width="stretch")
-        st.caption(
+        dark_site_section.pydeck_chart(deck, width="stretch")
+        dark_site_section.caption(
             f"Map summary: {sites[0]['name']} ranks first by {dark_site_sort.lower()}, "
             f"{interpret_distance(sites[0]['distance_km'], unit_system)} {interpret_bortle(sites[0]['bortle'])} "
             "Purple markers are candidates; the gold marker is your starting location."
         )
-        st.write(
+        dark_site_section.write(
             f"**Starting location (gold marker):** {location['name']} — {interpret_bortle(bortle)} · "
             f"{format_distance(0, unit_system)} straight-line · "
             f"`{location['lat']:.4f}, {location['lon']:.4f}`"
         )
-        st.markdown(f"[Open starting location in Google Maps]({google_maps_url(location['lat'], location['lon'])})")
+        dark_site_section.markdown(f"[Open starting location in Google Maps]({google_maps_url(location['lat'], location['lon'])})")
         if osm_lookup_succeeded:
-            st.caption("A named public-access recreation feature was found near at least one dark-sky candidate.")
+            dark_site_section.caption("A named public-access recreation feature was found near at least one dark-sky candidate.")
         else:
-            st.caption("Each dark point is described relative to a nearby named place when no public park, trailhead, or viewpoint is available.")
+            dark_site_section.caption("Each dark point is described relative to a nearby named place when no public park, trailhead, or viewpoint is available.")
         for index, site in enumerate(sites, 1):
             access_line = f"{site['access_label']}  \n" if site.get("access_label") else ""
-            st.markdown(
+            dark_site_section.markdown(
                 f"**{index}. {site['name']}**  \n"
                 f"{site['country']}  \n"
                 f"{interpret_distance(site['distance_km'], unit_system)}  \n"
@@ -623,9 +952,10 @@ if selected_match is not None:
             format_distance(max_distance_km, unit_system),
             format_distance(estimate, unit_system) if estimate else None,
         )
-        (st.success if bortle <= 4 else st.info)(guidance)
+        (dark_site_section.success if bortle <= 4 else dark_site_section.info)(guidance)
 
-    st.subheader("Take this plan with you")
+    plan_section = st.container(border=True)
+    plan_section.subheader("Take this plan with you")
     if best and flat_night:
         best_window_text = "Any time during astronomical darkness; conditions are nearly constant"
     elif best:
@@ -652,7 +982,7 @@ if selected_match is not None:
 
 Modeled planning estimate from Midnight. Verify weather, access, closures, and land rules before traveling.
 """
-    st.download_button(
+    plan_section.download_button(
         "Download night-sky plan",
         summary_card,
         file_name=f"midnight-{location['name'].lower().replace(' ', '-')}.md",
