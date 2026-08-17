@@ -62,7 +62,7 @@ div[data-testid="stMetric"] { border: 1px solid #62698c; border-radius: .7rem; p
 st.title("UMBRA")
 st.caption(
     "See whether the sky is worth watching tonight—and what is limiting it. "
-    "Built for OregonHacks to help people reconnect with nature and support environmental health."
+    "Built for the world to help people reconnect with nature and support environmental health."
 )
 
 with st.form("location_form"):
