@@ -17,14 +17,17 @@ with nature or supports environmental health.**
 - Scores current stargazing conditions only after astronomical darkness begins.
 - Disambiguates place-name searches and preserves the selected location while
   recomputing results.
-- Explains cloud, modeled light pollution, moonlight, and atmospheric effects.
+- Explains the practical consequence of every score, sky-quality, Moon,
+  cloud, aerosol, darkness-window, and travel-distance number.
 - Finds the best hour tonight and compares the best hour across seven nights.
 - Ranks nearby modeled dark-site candidates and presents both a map and an
   equivalent text list.
-- Shows a Bortle-specific guide to what sky features are visible or lost.
+- Shows a Bortle-, Moon-, and cloud-adjusted guide to the Milky Way, planets,
+  meteors, deep-sky objects, limiting magnitude, and stars lost to skyglow.
 - Estimates naked-eye planet positions from orbital elements and identifies
   active major meteor showers.
-- Adds PM2.5 and aerosol context when Open-Meteo Air Quality is available.
+- Distinguishes low, middle, and high clouds and flags modeled fog and smoke
+  conditions using Open-Meteo weather and air-quality data.
 - Produces a downloadable night-sky plan.
 - Supports global locations with metric/imperial distance controls; US results
   default to miles and all other country codes default to kilometers.
@@ -70,9 +73,10 @@ equatorial coordinates, and then uses the same local-sidereal-time altitude
 calculation as the Sun and Moon. The meteor overlay is a transparent static
 calendar of major annual showers rather than a live prediction service.
 
-Dark-site candidates come from a bounded 15 × 15 grid search. Candidates are
-ranked by modeled darkness, constrained by straight-line radius, spatially
-deduplicated, and labeled with a nearby Oregon dark-sky landmark when applicable.
+Dark-site candidates are real GeoNames populated places within the selected
+straight-line radius. Umbra models brightness at each place and lets users rank
+the results by darkness, distance, or a balance of both. It does not show
+unverified grid coordinates where land or access cannot be established.
 
 ## Model limitations
 
@@ -117,6 +121,22 @@ contains the same names, coordinates, distances, and Bortle estimates as the
 map. The interface remains usable if visualizations do not load. Theme colors
 use high-contrast twilight-inspired ivory, amber, indigo, and midnight tones.
 
+## Roadmap
+
+- **Verified observing sites:** Partner with local astronomy clubs to curate
+  public-access status, parking, hours, and safety notes so recommendations are
+  dependable destinations rather than model outputs alone.
+- **Route planning:** Add reliable driving time and directions so users can
+  compare the real effort of reaching each darker site instead of relying on
+  straight-line distance and a rough estimate.
+- **Alerts:** Notify users when an unusually clear, dark window is approaching
+  so rare good conditions are easier to act on.
+- **Community validation:** Let observers report actual conditions and use
+  those reports to identify where the model consistently drifts from reality.
+- **Satellite-calibrated light pollution:** Replace Walker's Law estimates with
+  VIIRS-derived measurements so local sky brightness reflects observed light
+  emissions rather than population alone.
+
 ## AI usage disclosure
 
 This project was developed with assistance from OpenAI Codex. AI helped
@@ -128,9 +148,10 @@ verification, demonstration, and submitted work.
 
 - `astronomy.py` — Sun, Moon, twilight, and naked-eye planet math
 - `light_pollution.py` — Walker's Law, Bortle mapping, visibility guidance
+- `interpretations.py` — value-sensitive plain-language consequences and sky visibility
 - `scoring.py` — composite score, best window, seven-night comparison
 - `data_sources.py` — guarded keyless APIs and local GeoNames loading
-- `dark_sites.py` — bounded nearby-candidate grid search
+- `dark_sites.py` — real populated-place candidate ranking by darkness and distance
 - `meteor_showers.py` — major annual-shower calendar
 - `units.py` — metric/imperial display conversion while models stay metric
 - `app.py` — accessible Streamlit interface

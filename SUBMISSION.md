@@ -22,6 +22,10 @@ dark-sky candidates. It shows candidates on a map and in an accessible text
 list, then generates a downloadable observing plan.
 Ambiguous names such as Portland present accessible location choices, and
 distance displays support both kilometers and miles for international use.
+Every numeric result states its practical consequence, and a dedicated panel
+contrasts the stars visible locally with what light pollution has erased.
+Layered clouds, fog risk, particle haze, and possible smoke are explained in
+plain language rather than collapsed into one weather number.
 
 ## How we built it
 
@@ -33,9 +37,10 @@ astronomical-twilight threshold.
 
 Artificial brightness follows Walker's Law: population × distance^−2.5. We sum
 nearby cities from a committed GeoNames dataset, calibrate the result on a
-logarithmic scale to an estimated Bortle class, and search a bounded geographic
-grid for darker candidates. Open-Meteo supplies keyless hourly weather and
-optional aerosol data; the app handles unavailable services without tracebacks.
+logarithmic scale to an estimated Bortle class, and rank real GeoNames populated
+places by modeled darkness and distance. Open-Meteo supplies keyless hourly
+weather, layered cloud, dew-point, wind, PM2.5, and aerosol data; the app handles
+unavailable services without tracebacks.
 
 ## Challenges
 
@@ -63,8 +68,16 @@ number.
 
 ## What's next
 
-Use VIIRS-calibrated World Atlas brightness, terrain-aware line-of-sight,
-verified roads and public-land access, and year-specific meteor predictions.
+- **Verified observing sites:** Partner with astronomy clubs on public access,
+  parking, hours, and safety notes so every recommendation is dependable.
+- **Route planning:** Add reliable driving time and directions so travel choices
+  reflect real roads rather than straight-line distance.
+- **Alerts:** Notify users before unusually clear, dark windows so they can act
+  on conditions that may only occur a few nights each month.
+- **Community validation:** Collect observer reports to reveal where modeled
+  conditions drift from the real sky and guide future calibration.
+- **Satellite-calibrated light pollution:** Replace population-based brightness
+  with VIIRS-derived measurements for more locally accurate skyglow estimates.
 
 ## AI usage disclosure
 

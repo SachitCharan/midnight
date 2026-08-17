@@ -12,8 +12,9 @@ go to find a darker sky.
 ## 0:40–1:25 — Core loop
 
 Enter **Portland, Oregon**. Show the explicit daytime gate or current score,
-the four-factor breakdown, the limiting-factor sentence, and tonight's best
-local-time window. Point out the hourly timeline and its text summary.
+read its plain-language consequence, then show the interpreted factor breakdown
+and tonight's true-darkness and best-viewing windows. Point out the highlighted
+hourly timeline and its text summary.
 
 ## 1:25–2:25 — Technical core
 
@@ -33,14 +34,16 @@ World Atlas data.
 ## 2:25–3:10 — Where to go
 
 Show the dark-sites map and first ranked site. State its straight-line distance
-and modeled Bortle class. Scroll through the equivalent text list and note that
-the suggestions are grid candidates, so users must verify road and land access.
+and rough driving-time estimate. Scroll through the equivalent text list and
+note that every candidate is a real GeoNames populated place, while public
+observing access still must be verified.
 
 ## 3:10–3:40 — Physics details
 
-Show the Moon/planet/meteor panel. Explain that a full Moon below the horizon
-does not reduce the score. Umbra also extends the orbital-element math to the
-five naked-eye planets and names active major meteor showers.
+Show **What you can see tonight**. Read the Milky Way status, actual naked-eye
+planets, adjusted meteor estimate, and star-loss comparison: an urban observer
+may see only tens or hundreds of stars where a Bortle 2 sky reveals several
+thousand. Then show the high/middle/low cloud, fog, and smoke interpretations.
 
 ## 3:40–4:10 — Accessibility and resilience
 
@@ -52,7 +55,7 @@ a clear message rather than a traceback.
 ## 4:10–4:40 — Close
 
 Umbra is for anyone who wants to reconnect with the night sky but does not know
-when or where to go. A production version would use satellite-calibrated light
-data and verified routing. Umbra tells you whether you can see stars tonight,
-why you can't, and where to drive to fix it—by modeling light pollution,
-moonlight, and cloud cover from first principles.
+when or where to go. Next steps are verified observing sites, real route
+planning, clear-night alerts, community validation, and satellite-calibrated
+light data. Umbra tells you whether you can see stars tonight, why you can't,
+and where to drive to fix it.
