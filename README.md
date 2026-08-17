@@ -73,10 +73,14 @@ equatorial coordinates, and then uses the same local-sidereal-time altitude
 calculation as the Sun and Moon. The meteor overlay is a transparent static
 calendar of major annual showers rather than a live prediction service.
 
-Dark-site candidates are real GeoNames populated places within the selected
-straight-line radius. Umbra models brightness at each place and lets users rank
-the results by darkness, distance, or a balance of both. It does not show
-unverified grid coordinates where land or access cannot be established.
+Dark-site candidates use a hybrid search: a coarse coordinate grid finds dark
+gaps between towns, then each point must be within 25 km of a committed GeoNames
+place before it survives the land-safety filter. Umbra describes each surviving
+point relative to the nearest named place and ranks the default view by modeled
+darkness gained per kilometer. Open-Meteo's Copernicus GLO-90 elevation lookup
+removes open-water cells; if it is unavailable, Umbra safely falls back to
+named land places. A top point can be replaced by a nearby named recreation
+feature only when OpenStreetMap explicitly confirms public access.
 
 ## Model limitations
 

@@ -17,8 +17,8 @@ from astronomy import (
     moon_phase_name,
     visible_planets,
 )
-from dark_sites import distance_km, find_dark_sites, google_maps_url, is_darker_than_start
-from data_sources import enrich_dark_sites_with_osm, fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
+from dark_sites import distance_km, find_dark_sites, find_hybrid_dark_sites, google_maps_url, is_darker_than_start
+from data_sources import confirm_land_by_elevation, enrich_dark_sites_with_osm, fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
 from interpretations import (
     interpret_aerosol,
     interpret_bortle,
@@ -492,7 +492,7 @@ if selected_match is not None:
     else:
         st.info(air_error or "Air-quality detail is unavailable; forecast visibility remains the haze proxy.")
 
-    st.subheader("Real dark-site candidates nearby")
+    st.subheader("Dark-sky candidates nearby")
     dark_site_sort = "Best balance"
     if bortle <= 4:
         sites = []
@@ -503,19 +503,36 @@ if selected_match is not None:
             ["Best balance", "Darkest sky", "Shortest trip"],
             key="dark_site_sort",
         )
-        sites = find_dark_sites(
-            location["lat"], location["lon"], centers, max_distance_km, 8,
+        grid_sites = find_hybrid_dark_sites(
+            location["lat"], location["lon"], centers, brightness, max_distance_km, 40,
             sort_by=dark_site_sort, country_code=country_code,
-            starting_brightness_index=brightness,
         )
+        sites, land_check_succeeded = confirm_land_by_elevation(grid_sites)
+        if not land_check_succeeded:
+            sites = find_dark_sites(
+                location["lat"], location["lon"], centers, max_distance_km, 8,
+                sort_by=dark_site_sort, country_code=country_code,
+                starting_brightness_index=brightness,
+            )
+        sites = sites[:8]
         sites, osm_lookup_succeeded = enrich_dark_sites_with_osm(sites)
     for site in sites:
         site["distance_km"] = round(distance_km(location["lat"], location["lon"], site["lat"], site["lon"]), 1)
         site["brightness_index"] = artificial_brightness(site["lat"], site["lon"], centers)
         site["darkness_score"] = darkness_score(site["brightness_index"])
+        site["darkness_gain"] = round(site["darkness_score"] - darkness_score(brightness), 1)
+        site["darkness_gain_per_km"] = round(
+            site["darkness_gain"] / max(5.0, site["distance_km"]), 3
+        )
         site["bortle"] = bortle_class(site["brightness_index"])
         site["maps_url"] = google_maps_url(site["lat"], site["lon"])
         site["country"] = location["country"] if site.get("country_code") == country_code else site.get("country_code", "Unknown")
+        if site.get("kind") == "Modeled land point":
+            region = f", {site['region']}" if site.get("region") else ""
+            site["name"] = (
+                f"{format_distance(site['nearest_distance_km'], unit_system)} {site['direction']} "
+                f"of {site['nearest_place']}{region}"
+            )
     sites = [site for site in sites if is_darker_than_start(brightness, site["brightness_index"])]
     if sites:
         map_rows = [{
@@ -558,15 +575,17 @@ if selected_match is not None:
         if osm_lookup_succeeded:
             st.caption("A named public-access recreation feature was found near at least one dark-sky candidate.")
         else:
-            st.caption("Nearby towns are shown as navigation references when no named public park, trailhead, or viewpoint is available.")
+            st.caption("Each dark point is described relative to a nearby named place when no public park, trailhead, or viewpoint is available.")
         for index, site in enumerate(sites, 1):
+            access_line = f"{site['access_label']}  \n" if site.get("access_label") else ""
             st.markdown(
                 f"**{index}. {site['name']}**  \n"
                 f"{site['country']}  \n"
                 f"{interpret_distance(site['distance_km'], unit_system)}  \n"
                 f"{interpret_bortle_improvement(bortle, site['bortle'])}  \n"
-                f"{site['access_label']}  \n"
+                f"{access_line}"
                 f"Darkness {site['darkness_score']:.0f}/100 — "
+                f"gain {site.get('darkness_gain', 0):.0f} points over your location · "
                 f"{interpret_component('light_pollution', site['darkness_score'])} · "
                 f"`{site['lat']:.4f}, {site['lon']:.4f}`  \n"
                 f"[Open in Google Maps]({site['maps_url']})"

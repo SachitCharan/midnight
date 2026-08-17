@@ -15,6 +15,7 @@ import streamlit as st
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
+ELEVATION_URL = "https://api.open-meteo.com/v1/elevation"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 REQUEST_TIMEOUT = 12
 
@@ -39,6 +40,10 @@ PNW_POPULATION_CENTERS = [
     {"name": "Spokane", "lat": 47.6588, "lon": -117.4260, "population": 229447},
     {"name": "Boise", "lat": 43.6150, "lon": -116.2023, "population": 235684},
 ]
+PNW_ADMIN1_CODES = {
+    "Seattle": "WA", "Tacoma": "WA", "Vancouver": "WA", "Spokane": "WA",
+    "Boise": "ID",
+}
 
 OREGON_DARK_SKY_LANDMARKS = [
     {"name": "Prineville Reservoir State Park", "lat": 44.1310, "lon": -120.7259, "kind": "International Dark Sky Park"},
@@ -205,11 +210,11 @@ def _load_geonames() -> pd.DataFrame:
         GEONAMES_PATH,
         sep="\t",
         names=GEONAMES_COLUMNS,
-        usecols=["name", "latitude", "longitude", "feature_class", "feature_code", "population", "country_code"],
+        usecols=["name", "latitude", "longitude", "feature_class", "feature_code", "population", "country_code", "admin1_code"],
         dtype={
             "name": "string", "latitude": float, "longitude": float,
             "feature_class": "string", "feature_code": "string",
-            "population": "int64", "country_code": "string",
+            "population": "int64", "country_code": "string", "admin1_code": "string",
         },
         keep_default_na=False,
     )
@@ -231,6 +236,7 @@ def _geonames_within_radius(lat: float, lon: float, radius_km: float = 150.0) ->
             "name": row.name, "lat": float(row.latitude), "lon": float(row.longitude),
             "population": int(row.population), "country_code": row.country_code,
             "feature_class": row.feature_class, "feature_code": row.feature_code,
+            "admin1_code": row.admin1_code,
         }
         for row in nearby.itertuples(index=False)
         if int(row.population) > 0
@@ -238,7 +244,14 @@ def _geonames_within_radius(lat: float, lon: float, radius_km: float = 150.0) ->
 
 
 def _pnw_population_fallback() -> list[dict]:
-    return [center | {"country_code": "US", "feature_class": "P"} for center in PNW_POPULATION_CENTERS]
+    return [
+        center | {
+            "country_code": "US",
+            "feature_class": "P",
+            "admin1_code": PNW_ADMIN1_CODES.get(center["name"], "OR"),
+        }
+        for center in PNW_POPULATION_CENTERS
+    ]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -251,7 +264,11 @@ def fetch_population_centers(lat: float, lon: float, use_overpass: bool = False)
         for center in PNW_POPULATION_CENTERS:
             rough_distance = ((center["lat"] - lat) ** 2 + ((center["lon"] - lon) * np.cos(np.radians(lat))) ** 2) ** 0.5 * 111
             if rough_distance <= 150:
-                nearby_enrichment.append(center | {"country_code": "US", "feature_class": "P"})
+                nearby_enrichment.append(center | {
+                    "country_code": "US",
+                    "feature_class": "P",
+                    "admin1_code": PNW_ADMIN1_CODES.get(center["name"], "OR"),
+                })
         merged = {center["name"].casefold(): center for center in centers}
         merged.update({center["name"].casefold(): center for center in nearby_enrichment})
         centers = list(merged.values())
@@ -296,11 +313,42 @@ def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return float(6371.0 * 2 * np.arcsin(np.sqrt(np.clip(value, 0, 1))))
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def confirm_land_by_elevation(sites: list[dict]) -> tuple[list[dict], bool]:
+    """Drop zero-elevation DEM cells, which represent open water in GLO-90."""
+    if not sites:
+        return [], True
+    try:
+        response = requests.get(
+            ELEVATION_URL,
+            params={
+                "latitude": ",".join(str(site["lat"]) for site in sites),
+                "longitude": ",".join(str(site["lon"]) for site in sites),
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        elevations = response.json().get("elevation") or []
+        if len(elevations) != len(sites):
+            raise ValueError("Incomplete elevation response")
+        confirmed = []
+        for site, elevation in zip(sites, elevations):
+            elevation_m = float(elevation)
+            if abs(elevation_m) > 0.5:
+                confirmed.append(site | {"elevation_m": elevation_m})
+        return confirmed, True
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return [], False
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def enrich_dark_sites_with_osm(sites: list[dict]) -> tuple[list[dict], bool]:
     """Prefer nearby named OSM recreation features; otherwise return honest town fallbacks."""
     fallback = [site | {
-        "access_label": "Nearest town — look for a public pullout or park on the outskirts",
+        "access_label": (
+            "Nearest town — look for a public pullout or park on the outskirts"
+            if site.get("kind") != "Modeled land point" else ""
+        ),
         "osm_public_feature": False,
     } for site in sites]
     if not sites:
@@ -368,7 +416,10 @@ def enrich_dark_sites_with_osm(sites: list[dict]) -> tuple[list[dict], bool]:
             enriched.append(site | nearby[0][1] | {"nearest_town": site["name"]})
         else:
             enriched.append(site | {
-                "access_label": "Nearest town — look for a public pullout or park on the outskirts",
+                "access_label": (
+                    "Nearest town — look for a public pullout or park on the outskirts"
+                    if site.get("kind") != "Modeled land point" else ""
+                ),
                 "osm_public_feature": False,
             })
     return enriched, used_osm

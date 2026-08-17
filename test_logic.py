@@ -32,8 +32,8 @@ from interpretations import (
     visibility_snapshot,
 )
 from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, is_flat_night, limiting_factor, limiting_factor_name, normalize_hourly_data, precompute_night_views, score_label, summarize_nights
-from data_sources import enrich_dark_sites_with_osm, fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
-from dark_sites import distance_km, find_dark_sites, google_maps_url, is_darker_than_start
+from data_sources import confirm_land_by_elevation, enrich_dark_sites_with_osm, fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
+from dark_sites import distance_km, find_dark_sites, find_hybrid_dark_sites, google_maps_url, is_darker_than_start
 from meteor_showers import meteor_activity
 from units import default_unit_system, distance_to_km, format_distance
 
@@ -223,6 +223,42 @@ def test_dark_sites_never_recommend_equal_or_worse_skies() -> None:
     guidance = interpret_no_darker_sites(3, "60 mi")
     assert "Staying put is the right answer" in guidance
     assert "already Bortle 3" in guidance
+
+
+def test_hybrid_grid_finds_confirmed_land_gaps() -> None:
+    centers = [
+        {"name": "Starting City", "lat": 45.0, "lon": -122.0, "population": 600000, "country_code": "US", "admin1_code": "41"},
+        {"name": "Land Town", "lat": 45.32, "lon": -122.0, "population": 15000, "country_code": "US", "admin1_code": "41"},
+        {"name": "East Town", "lat": 45.0, "lon": -121.6, "population": 15000, "country_code": "US", "admin1_code": "41"},
+    ]
+    starting = artificial_brightness(45.0, -122.0, centers)
+    sites = find_hybrid_dark_sites(45.0, -122.0, centers, starting, 80, 8, country_code="US")
+    assert sites
+    assert all(site["nearest_distance_km"] <= 25 for site in sites)
+    assert all(site["bortle"] < bortle_class(starting) for site in sites)
+    assert all(site["nearest_place"] and site["direction"] for site in sites)
+    assert all(site["region"] == "OR" for site in sites)
+
+
+def test_elevation_land_confirmation_drops_ocean_but_keeps_low_land() -> None:
+    sites = [
+        {"name": "Ocean", "lat": 32.7, "lon": -117.3},
+        {"name": "Hill", "lat": 32.8, "lon": -117.1},
+        {"name": "Below sea level", "lat": 36.2, "lon": -116.8},
+    ]
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"elevation": [0.0, 118.0, -86.0]}
+    confirm_land_by_elevation.clear()
+    with patch("data_sources.requests.get", return_value=response):
+        confirmed, succeeded = confirm_land_by_elevation(sites)
+    assert succeeded
+    assert [site["name"] for site in confirmed] == ["Hill", "Below sea level"]
+
+    confirm_land_by_elevation.clear()
+    with patch("data_sources.requests.get", side_effect=requests.ConnectionError("offline")):
+        confirmed, succeeded = confirm_land_by_elevation(sites)
+    assert not succeeded and confirmed == []
 
 
 def test_dark_site_maps_improvement_and_osm_fallback() -> None:

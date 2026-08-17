@@ -7,6 +7,10 @@ import math
 from light_pollution import artificial_brightness, bortle_class, darkness_score
 
 EARTH_RADIUS_KM = 6371.0
+_US_STATE_CODES = {
+    "04": "AZ", "06": "CA", "08": "CO", "23": "ME", "41": "OR",
+    "48": "TX", "53": "WA",
+}
 
 
 def distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -23,6 +27,113 @@ def is_darker_than_start(starting_brightness: float, candidate_brightness: float
         darkness_score(candidate_brightness) > darkness_score(starting_brightness)
         and bortle_class(candidate_brightness) < bortle_class(starting_brightness)
     )
+
+
+def _bearing_direction(lat1: float, lon1: float, lat2: float, lon2: float) -> str:
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    delta_lon = math.radians(lon2 - lon1)
+    y = math.sin(delta_lon) * math.cos(phi2)
+    x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(delta_lon)
+    bearing = (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
+    directions = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"]
+    return directions[int((bearing + 22.5) // 45) % 8]
+
+
+def _place_region(place: dict) -> str:
+    country = str(place.get("country_code", "")).upper()
+    admin1 = str(place.get("admin1_code", "")).upper()
+    if country == "US" and len(admin1) == 2 and admin1.isalpha():
+        return admin1
+    if country == "US" and admin1 in _US_STATE_CODES:
+        return _US_STATE_CODES[admin1]
+    return country
+
+
+def find_hybrid_dark_sites(
+    lat: float,
+    lon: float,
+    population_centers: list,
+    starting_brightness_index: float,
+    max_distance_km: float = 100,
+    top_n: int = 8,
+    sort_by: str = "Best balance",
+    country_code: str | None = None,
+    grid_step_km: float = 12.0,
+    land_confirmation_km: float = 25.0,
+) -> list[dict]:
+    """Find dark gaps on a coarse grid, retaining only points near a named place."""
+    if max_distance_km <= 0 or top_n <= 0 or grid_step_km <= 0:
+        return []
+    places = []
+    for place in population_centers:
+        if place.get("feature_class", "P") != "P":
+            continue
+        place_country = str(place.get("country_code", "")).upper()
+        if country_code and place_country and place_country != country_code.upper():
+            continue
+        try:
+            places.append(place | {"lat": float(place["lat"]), "lon": float(place["lon"])})
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not places:
+        return []
+
+    latitude_step = grid_step_km / 111.0
+    longitude_step = grid_step_km / max(20.0, 111.0 * abs(math.cos(math.radians(lat))))
+    grid_radius = math.ceil(max_distance_km / grid_step_km)
+    start_darkness = darkness_score(starting_brightness_index)
+    candidates = []
+    for lat_index in range(-grid_radius, grid_radius + 1):
+        for lon_index in range(-grid_radius, grid_radius + 1):
+            if lat_index == 0 and lon_index == 0:
+                continue
+            candidate_lat = lat + lat_index * latitude_step
+            candidate_lon = lon + lon_index * longitude_step
+            travel_distance = distance_km(lat, lon, candidate_lat, candidate_lon)
+            if travel_distance < 5.0 or travel_distance > max_distance_km:
+                continue
+            nearest_place = min(
+                places,
+                key=lambda place: distance_km(candidate_lat, candidate_lon, place["lat"], place["lon"]),
+            )
+            nearest_distance = distance_km(
+                candidate_lat, candidate_lon, nearest_place["lat"], nearest_place["lon"]
+            )
+            if nearest_distance > land_confirmation_km:
+                continue
+            brightness = artificial_brightness(candidate_lat, candidate_lon, population_centers)
+            if not is_darker_than_start(starting_brightness_index, brightness):
+                continue
+            dark_score = darkness_score(brightness)
+            darkness_gain = dark_score - start_darkness
+            candidates.append({
+                "name": "Dark-sky point",
+                "lat": round(candidate_lat, 5),
+                "lon": round(candidate_lon, 5),
+                "distance_km": round(travel_distance, 1),
+                "brightness_index": brightness,
+                "darkness_score": dark_score,
+                "darkness_gain": round(darkness_gain, 1),
+                "darkness_gain_per_km": round(darkness_gain / max(5.0, travel_distance), 3),
+                "bortle": bortle_class(brightness),
+                "usefulness_score": round(darkness_gain / max(5.0, travel_distance), 3),
+                "kind": "Modeled land point",
+                "country_code": str(nearest_place.get("country_code", "")).upper(),
+                "nearest_place": str(nearest_place.get("name", "Named place")),
+                "nearest_distance_km": round(nearest_distance, 1),
+                "direction": _bearing_direction(
+                    nearest_place["lat"], nearest_place["lon"], candidate_lat, candidate_lon
+                ),
+                "region": _place_region(nearest_place),
+            })
+
+    if sort_by == "Darkest sky":
+        candidates.sort(key=lambda item: (-item["darkness_score"], item["distance_km"]))
+    elif sort_by == "Shortest trip":
+        candidates.sort(key=lambda item: (item["distance_km"], -item["darkness_gain"]))
+    else:
+        candidates.sort(key=lambda item: (-item["darkness_gain_per_km"], -item["darkness_gain"], item["distance_km"]))
+    return candidates[:top_n]
 
 
 def find_dark_sites(
