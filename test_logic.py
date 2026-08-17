@@ -1,5 +1,6 @@
 """Dependency-free test runner for Umbra's pure logic."""
 
+import math
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
@@ -15,7 +16,7 @@ from astronomy import (
     visible_planets,
 )
 from light_pollution import artificial_brightness, bortle_class, darkness_score
-from scoring import compute_stargazing_score, find_best_window, limiting_factor, score_label, summarize_nights
+from scoring import build_score_timeline, compute_stargazing_score, find_best_window, limiting_factor, normalize_hourly_data, score_label, summarize_nights
 from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
 from dark_sites import distance_km, find_dark_sites
 from meteor_showers import meteor_activity
@@ -221,6 +222,21 @@ def test_best_window_is_first_upcoming_dark_interval_and_timezone_aware() -> Non
         (best["all_hours"][index + 1]["time"] - best["all_hours"][index]["time"]).total_seconds() <= 5400
         for index in range(len(best["all_hours"]) - 1)
     )
+
+
+def test_hourly_series_sorts_deduplicates_and_breaks_in_daylight() -> None:
+    base = datetime(2026, 12, 21, tzinfo=UTC)
+    rows = [{
+        "time": base + timedelta(hours=index), "cloud_cover": 20,
+        "brightness_index": 10, "visibility": 18000, "relative_humidity_2m": 50,
+    } for index in (12, 0, 1, 1, 13, 2)]
+    normalized = normalize_hourly_data(rows)
+    assert [row["time"] for row in normalized] == sorted({row["time"] for row in rows})
+    timeline = build_score_timeline(rows, 45, 0)
+    assert [item["time"] for item in timeline] == [row["time"] for row in normalized]
+    assert math.isnan(next(item["score"] for item in timeline if item["time"].hour == 12))
+    assert not math.isnan(next(item["score"] for item in timeline if item["time"].hour == 0))
+    assert next(item["segment"] for item in timeline if item["time"].hour == 12) is None
 
 
 def run_tests() -> None:

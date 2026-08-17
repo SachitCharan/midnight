@@ -21,7 +21,15 @@ from dark_sites import find_dark_sites
 from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
 from light_pollution import artificial_brightness, bortle_class, bortle_description, visibility_expectations
 from meteor_showers import meteor_activity
-from scoring import compute_stargazing_score, find_best_window, limiting_factor, score_label, summarize_nights
+from scoring import (
+    build_score_timeline,
+    compute_stargazing_score,
+    find_best_window,
+    limiting_factor,
+    normalize_hourly_data,
+    score_label,
+    summarize_nights,
+)
 from units import default_unit_system, distance_to_km, format_distance
 
 st.set_page_config(page_title="Umbra", page_icon="🌘", layout="centered")
@@ -149,6 +157,7 @@ if selected_match is not None:
         st.warning(forecast_error or "No forecast hours were returned.")
         st.stop()
 
+    forecast = normalize_hourly_data(forecast)
     for row in forecast:
         row["brightness_index"] = brightness
 
@@ -188,11 +197,53 @@ if selected_match is not None:
             f"{local_start.strftime('%b %d, %I:%M %p')}–{local_end.strftime('%I:%M %p %Z')} "
             f"with a peak modeled score of **{best['best_score']:.0f}/100**."
         )
-        timeline = pd.DataFrame({
-            "Local time": [item["time"].astimezone(local_zone) for item in best["all_hours"]],
-            "Stargazing score": [item["score"] for item in best["all_hours"]],
-        }).set_index("Local time")
-        st.line_chart(timeline, y="Stargazing score", color="#D8A7FF")
+        observing_date = (local_start - timedelta(hours=12)).date()
+        timeline_rows = []
+        for item in build_score_timeline(upcoming_forecast, location["lat"], location["lon"]):
+            local_time = item["time"].astimezone(local_zone)
+            if (local_time - timedelta(hours=12)).date() != observing_date:
+                continue
+            timeline_rows.append({
+                "Local time": local_time,
+                "Interval end": local_time + timedelta(hours=1),
+                "Stargazing score": item["score"],
+                "Night segment": item["segment"],
+                "Best window": best["start"] <= item["time"] <= best["end"],
+            })
+        timeline = pd.DataFrame(timeline_rows).sort_values("Local time").drop_duplicates("Local time")
+        st.vega_lite_chart(timeline, {
+            "padding": {"left": 25, "right": 10, "top": 10, "bottom": 20},
+            "layer": [
+                {
+                    "transform": [{"filter": "datum['Best window'] === true"}],
+                    "mark": {"type": "rect", "color": "#F2B880", "opacity": 0.18},
+                    "encoding": {
+                        "x": {"field": "Local time", "type": "temporal"},
+                        "x2": {"field": "Interval end"},
+                    },
+                },
+                {
+                    "transform": [{"filter": "isValid(datum['Stargazing score'])"}],
+                    "mark": {"type": "line", "color": "#D8A7FF", "point": True},
+                    "encoding": {
+                        "x": {
+                            "field": "Local time", "type": "temporal", "title": "Local date and time",
+                            "axis": {"format": "%b %d, %I %p", "labelAngle": -35, "labelOverlap": "greedy"},
+                        },
+                        "y": {
+                            "field": "Stargazing score", "type": "quantitative", "title": "Stargazing score (0–100)",
+                            "scale": {"domain": [0, 100], "clamp": True, "nice": False},
+                            "axis": {"titlePadding": 14},
+                        },
+                        "detail": {"field": "Night segment", "type": "nominal"},
+                        "tooltip": [
+                            {"field": "Local time", "type": "temporal", "title": "Local time", "format": "%b %d, %I:%M %p"},
+                            {"field": "Stargazing score", "type": "quantitative", "title": "Score", "format": ".0f"},
+                        ],
+                    },
+                },
+            ],
+        }, width="stretch")
         st.caption(
             f"Tonight summary: the best modeled score is {best['best_score']:.0f}/100, "
             f"beginning near {local_start.strftime('%I:%M %p')} local time."

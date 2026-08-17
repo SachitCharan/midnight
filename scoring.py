@@ -17,6 +17,43 @@ WEIGHTS = {
 }
 
 
+def normalize_hourly_data(hourly_data: list[dict]) -> list[dict]:
+    """Sort ascending and keep the first row for each timezone-aware timestamp."""
+    normalized = []
+    seen = set()
+    for row in sorted(hourly_data, key=lambda item: item["time"]):
+        when = row["time"]
+        if when.tzinfo is None:
+            raise ValueError("Hourly forecast timestamps must be timezone-aware")
+        if when in seen:
+            continue
+        seen.add(when)
+        normalized.append(row)
+    return normalized
+
+
+def build_score_timeline(hourly_data: list[dict], lat: float, lon: float) -> list[dict]:
+    """Return one point per hour, using NaN to break the line during daylight."""
+    timeline = []
+    segment = 0
+    was_dark = False
+    for hour in normalize_hourly_data(hourly_data):
+        when = hour["time"]
+        score = float("nan")
+        dark = is_astronomical_darkness(when, lat, lon)
+        if dark:
+            if not was_dark:
+                segment += 1
+            score, _ = compute_stargazing_score(
+                hour.get("cloud_cover", 0), hour["brightness_index"], moon_illumination(when),
+                moon_altitude(when, lat, lon), hour.get("visibility", 20000),
+                hour.get("relative_humidity_2m", 50),
+            )
+        timeline.append({"time": when, "score": score, "segment": segment if dark else None})
+        was_dark = dark
+    return timeline
+
+
 def _clamp(value: float) -> float:
     return max(0.0, min(100.0, float(value)))
 
