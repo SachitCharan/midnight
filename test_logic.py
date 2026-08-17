@@ -151,12 +151,44 @@ def test_dark_sites_are_ranked_and_bounded() -> None:
         {"name": "Portland", "lat": 45.5152, "lon": -122.6784, "population": 652503},
         {"name": "Salem", "lat": 44.9429, "lon": -123.0351, "population": 175535},
     ]
-    sites = find_dark_sites(45.5152, -122.6784, centers, max_distance_km=80, top_n=6)
-    assert len(sites) == 6
+    sites = find_dark_sites(45.5152, -122.6784, centers, max_distance_km=80, top_n=6, sort_by="Darkest sky")
+    assert len(sites) == 1
     assert all(5 <= site["distance_km"] <= 80 for site in sites)
     assert all(1 <= site["bortle"] <= 9 for site in sites)
     assert all(sites[index]["darkness_score"] >= sites[index + 1]["darkness_score"] for index in range(len(sites) - 1))
+    assert all(site["name"] in {center["name"] for center in centers} for site in sites)
+    assert all(site["kind"] == "GeoNames populated place" for site in sites)
     assert all(abs(distance_km(45.5152, -122.6784, site["lat"], site["lon"]) - site["distance_km"]) < 0.2 for site in sites)
+
+
+def test_dark_site_sorting_exposes_distance_darkness_tradeoff() -> None:
+    centers = [
+        {"name": "Starting city", "lat": 45.5152, "lon": -122.6784, "population": 600000},
+        {"name": "Near town", "lat": 45.60, "lon": -122.68, "population": 20000},
+        {"name": "Far town", "lat": 46.15, "lon": -122.68, "population": 15000},
+    ]
+    shortest = find_dark_sites(45.5152, -122.6784, centers, 100, 3, sort_by="Shortest trip")
+    darkest = find_dark_sites(45.5152, -122.6784, centers, 100, 3, sort_by="Darkest sky")
+    assert shortest[0]["name"] == "Near town"
+    assert darkest[0]["darkness_score"] >= darkest[-1]["darkness_score"]
+    assert all(not site["name"].startswith("Modeled site") for site in shortest + darkest)
+
+
+def test_reference_cities_return_named_land_candidates() -> None:
+    cases = [
+        (45.5152, -122.6784, 96.5606),
+        (39.7392, -104.9903, 96.5606),
+        (35.6762, 139.6503, 100.0),
+    ]
+    for lat, lon, radius in cases:
+        centers, _, _ = fetch_population_centers(lat, lon)
+        places = {
+            (center["name"], round(center["lat"], 5), round(center["lon"], 5)): center.get("feature_class", "P")
+            for center in centers
+        }
+        sites = find_dark_sites(lat, lon, centers, radius, 3)
+        assert len(sites) == 3
+        assert all(places[(site["name"], site["lat"], site["lon"])] == "P" for site in sites)
 
 
 def test_planet_positions_are_sane() -> None:

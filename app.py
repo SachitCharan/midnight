@@ -381,12 +381,20 @@ if selected_match is not None:
     else:
         st.info(air_error or "Air-quality detail is unavailable; forecast visibility remains the haze proxy.")
 
-    st.subheader("Darkest modeled sites nearby")
-    sites = find_dark_sites(location["lat"], location["lon"], centers, max_distance_km, 8)
+    st.subheader("Real dark-site candidates nearby")
+    dark_site_sort = st.selectbox(
+        "Sort dark-site candidates by",
+        ["Best balance", "Darkest sky", "Shortest trip"],
+        key="dark_site_sort",
+    )
+    sites = find_dark_sites(
+        location["lat"], location["lon"], centers, max_distance_km, 8, sort_by=dark_site_sort
+    )
     if sites:
         map_rows = [{
             **site,
             "distance_display": format_distance(site["distance_km"], unit_system),
+            "bortle_meaning": bortle_description(site["bortle"]),
             "marker": "Dark-site candidate",
             "color": [216, 167, 255, 220],
         } for site in sites]
@@ -394,6 +402,7 @@ if selected_match is not None:
             "name": location["name"], "lat": location["lat"], "lon": location["lon"],
             "bortle": bortle, "distance_km": 0, "darkness_score": 0,
             "distance_display": format_distance(0, unit_system),
+            "bortle_meaning": bortle_description(bortle),
             "marker": "Your location", "kind": "Starting point", "color": [255, 190, 92, 255],
         })
         layer = pdk.Layer(
@@ -403,29 +412,38 @@ if selected_match is not None:
         view = pdk.ViewState(latitude=location["lat"], longitude=location["lon"], zoom=7)
         deck = pdk.Deck(
             layers=[layer], initial_view_state=view,
-            tooltip={"html": "<b>{name}</b><br/>{marker}<br/>Bortle {bortle}<br/>{distance_display} straight-line"},
+            tooltip={"html": "<b>{name}</b><br/>{marker}<br/>Bortle {bortle}: {bortle_meaning}<br/>{distance_display} straight-line"},
             map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         )
         st.pydeck_chart(deck, width="stretch")
         st.caption(
-            f"Map summary: {sites[0]['name']} is the darkest top-ranked candidate, "
+            f"Map summary: {sites[0]['name']} ranks first by {dark_site_sort.lower()}, "
             f"{format_distance(sites[0]['distance_km'], unit_system, 0)} away with modeled Bortle class {sites[0]['bortle']}. "
             "Purple markers are candidates; the gold marker is your starting location."
         )
         st.write(
-            f"**Starting location (gold marker):** {location['name']} — Bortle {bortle} · "
+            f"**Starting location (gold marker):** {location['name']} — Bortle {bortle}: "
+            f"{bortle_description(bortle)} · "
             f"{format_distance(0, unit_system)} straight-line · "
             f"`{location['lat']:.4f}, {location['lon']:.4f}`"
         )
         for index, site in enumerate(sites, 1):
             st.markdown(
-                f"**{index}. {site['name']} — Bortle {site['bortle']}**  \n"
-                f"{format_distance(site['distance_km'], unit_system)} straight-line · Darkness {site['darkness_score']:.0f}/100 · "
-                f"{site['kind']} · `{site['lat']:.4f}, {site['lon']:.4f}`"
+                f"**{index}. {site['name']}**  \n"
+                f"{format_distance(site['distance_km'], unit_system)} straight-line · "
+                f"Estimated Bortle {site['bortle']} — {bortle_description(site['bortle'])}  \n"
+                f"Darkness {site['darkness_score']:.0f}/100 · {site['kind']} · "
+                f"`{site['lat']:.4f}, {site['lon']:.4f}`"
             )
-        st.warning("These are modeled grid candidates, not verified observing sites. Check road access, closures, weather, and land rules before traveling.")
+        st.warning(
+            "These are real named populated places, but not verified observing sites. "
+            "Check public access, closures, weather, and local rules before traveling."
+        )
     else:
-        st.write("No candidate sites were found within that distance.")
+        st.write(
+            "No verified populated-place candidates were found within that distance. "
+            "Umbra does not show unverified grid coordinates."
+        )
 
     st.subheader("Take this plan with you")
     best_window_text = (

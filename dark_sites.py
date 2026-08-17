@@ -1,12 +1,9 @@
-"""Rank modeled dark-sky candidates around an observer without new API calls."""
+"""Rank real populated-place dark-sky candidates without new API calls."""
 
 from __future__ import annotations
 
 import math
 
-import numpy as np
-
-from data_sources import OREGON_DARK_SKY_LANDMARKS
 from light_pollution import artificial_brightness, bortle_class, darkness_score
 
 EARTH_RADIUS_KM = 6371.0
@@ -20,63 +17,53 @@ def distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
 
-def _candidate_name(lat: float, lon: float) -> tuple[str, str]:
-    if OREGON_DARK_SKY_LANDMARKS:
-        landmark = min(
-            OREGON_DARK_SKY_LANDMARKS,
-            key=lambda item: distance_km(lat, lon, item["lat"], item["lon"]),
-        )
-        distance = distance_km(lat, lon, landmark["lat"], landmark["lon"])
-        if distance <= 18:
-            return landmark["name"], landmark["kind"]
-    return f"Modeled site {lat:.3f}, {lon:.3f}", "Grid-search candidate"
-
-
 def find_dark_sites(
     lat: float,
     lon: float,
     population_centers: list,
     max_distance_km: float = 100,
     top_n: int = 8,
+    sort_by: str = "Best balance",
 ) -> list[dict]:
-    """Return distinct high-darkness candidates inside a straight-line radius."""
+    """Return named populated places ranked by darkness and travel distance."""
     if max_distance_km <= 0 or top_n <= 0:
         return []
-    lat_span = max_distance_km / 111.0
-    lon_span = max_distance_km / max(20.0, 111.0 * math.cos(math.radians(lat)))
-    latitudes = np.linspace(lat - lat_span, lat + lat_span, 15)
-    longitudes = np.linspace(lon - lon_span, lon + lon_span, 15)
     candidates = []
-    for candidate_lat in latitudes:
-        for candidate_lon in longitudes:
-            distance = distance_km(lat, lon, float(candidate_lat), float(candidate_lon))
-            if distance < 5 or distance > max_distance_km:
-                continue
-            brightness = artificial_brightness(
-                float(candidate_lat), float(candidate_lon), population_centers
-            )
-            candidates.append({
-                "lat": round(float(candidate_lat), 5),
-                "lon": round(float(candidate_lon), 5),
-                "distance_km": round(distance, 1),
-                "brightness_index": brightness,
-                "darkness_score": darkness_score(brightness),
-                "bortle": bortle_class(brightness),
-            })
-
-    # Darkness first, then shorter distance. Keep results spatially distinct.
-    candidates.sort(key=lambda item: (-item["darkness_score"], item["distance_km"]))
-    selected = []
-    minimum_separation = max(8.0, max_distance_km / 8.0)
-    for candidate in candidates:
-        if any(
-            distance_km(candidate["lat"], candidate["lon"], other["lat"], other["lon"])
-            < minimum_separation
-            for other in selected
-        ):
+    seen = set()
+    for place in population_centers:
+        if place.get("feature_class", "P") != "P":
             continue
-        name, kind = _candidate_name(candidate["lat"], candidate["lon"])
-        selected.append(candidate | {"name": name, "kind": kind})
-        if len(selected) == top_n:
-            break
-    return selected
+        try:
+            candidate_lat = float(place["lat"])
+            candidate_lon = float(place["lon"])
+            name = str(place["name"]).strip()
+        except (KeyError, TypeError, ValueError):
+            continue
+        identity = (name.casefold(), round(candidate_lat, 5), round(candidate_lon, 5))
+        if not name or identity in seen:
+            continue
+        seen.add(identity)
+        distance = distance_km(lat, lon, candidate_lat, candidate_lon)
+        if distance < 5 or distance > max_distance_km:
+            continue
+        brightness = artificial_brightness(candidate_lat, candidate_lon, population_centers)
+        dark_score = darkness_score(brightness)
+        candidates.append({
+            "name": name,
+            "lat": round(candidate_lat, 5),
+            "lon": round(candidate_lon, 5),
+            "distance_km": round(distance, 1),
+            "brightness_index": brightness,
+            "darkness_score": dark_score,
+            "bortle": bortle_class(brightness),
+            "usefulness_score": round(dark_score - 0.04 * distance, 1),
+            "kind": "GeoNames populated place",
+        })
+
+    if sort_by == "Darkest sky":
+        candidates.sort(key=lambda item: (-item["darkness_score"], item["distance_km"], item["name"]))
+    elif sort_by == "Shortest trip":
+        candidates.sort(key=lambda item: (item["distance_km"], -item["darkness_score"], item["name"]))
+    else:
+        candidates.sort(key=lambda item: (-item["usefulness_score"], -item["darkness_score"], item["distance_km"], item["name"]))
+    return candidates[:top_n]

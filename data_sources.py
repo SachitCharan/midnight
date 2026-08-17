@@ -204,8 +204,12 @@ def _load_geonames() -> pd.DataFrame:
         GEONAMES_PATH,
         sep="\t",
         names=GEONAMES_COLUMNS,
-        usecols=["name", "latitude", "longitude", "population", "country_code"],
-        dtype={"name": "string", "latitude": float, "longitude": float, "population": "int64", "country_code": "string"},
+        usecols=["name", "latitude", "longitude", "feature_class", "feature_code", "population", "country_code"],
+        dtype={
+            "name": "string", "latitude": float, "longitude": float,
+            "feature_class": "string", "feature_code": "string",
+            "population": "int64", "country_code": "string",
+        },
         keep_default_na=False,
     )
 
@@ -220,9 +224,13 @@ def _geonames_within_radius(lat: float, lon: float, radius_km: float = 150.0) ->
     dlon = longitudes - target_longitude
     a = np.sin(dlat / 2) ** 2 + np.cos(target_latitude) * np.cos(latitudes) * np.sin(dlon / 2) ** 2
     distances = 6371.0 * 2 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
-    nearby = frame.loc[distances <= radius_km]
+    nearby = frame.loc[(distances <= radius_km) & (frame["feature_class"] == "P")]
     return [
-        {"name": row.name, "lat": float(row.latitude), "lon": float(row.longitude), "population": int(row.population)}
+        {
+            "name": row.name, "lat": float(row.latitude), "lon": float(row.longitude),
+            "population": int(row.population), "country_code": row.country_code,
+            "feature_class": row.feature_class, "feature_code": row.feature_code,
+        }
         for row in nearby.itertuples(index=False)
         if int(row.population) > 0
     ]
