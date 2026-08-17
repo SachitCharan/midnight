@@ -148,6 +148,7 @@ def test_forecast_request_covers_seven_complete_nights() -> None:
     with patch("data_sources.requests.get", side_effect=requests.ConnectionError("offline")) as get:
         fetch_forecast(45.5, -122.7)
     assert get.call_args.kwargs["params"]["forecast_days"] == 8
+    assert get.call_args.kwargs["params"]["past_days"] == 1
     requested = set(get.call_args.kwargs["params"]["hourly"].split(","))
     assert {"cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "dew_point_2m", "wind_speed_10m"} <= requested
 
@@ -343,6 +344,21 @@ def test_best_window_requires_complete_darkness_window() -> None:
     assert hourly_data_covers_window(complete, (start, end))
     assert not hourly_data_covers_window(complete[:-1], (start, end))
     assert hourly_data_covers_window(complete[2:], (start, end), not_before=complete[2]["time"])
+
+
+def test_best_window_is_clamped_to_exact_darkness_bounds() -> None:
+    start = datetime(2026, 12, 21, 0, 20, tzinfo=UTC)
+    end = datetime(2026, 12, 21, 5, 20, tzinfo=UTC)
+    hourly = [{
+        "time": datetime(2026, 12, 21, hour, tzinfo=UTC),
+        "cloud_cover": 10,
+        "brightness_index": 10,
+        "visibility": 18000,
+        "relative_humidity_2m": 50,
+    } for hour in range(1, 6)]
+    best = find_best_window(hourly, 45, 0, (start, end))
+    assert best
+    assert start <= best["start"] < best["end"] <= end
 
 
 def run_tests() -> None:

@@ -136,7 +136,7 @@ def score_label(score: float) -> str:
     return "Don't bother"
 
 
-def limiting_factor(subscores: dict) -> str:
+def limiting_factor(subscores: dict, period: str = "tonight") -> str:
     labels = {
         "cloud_cover": "Cloud cover",
         "light_pollution": "Light pollution",
@@ -147,13 +147,20 @@ def limiting_factor(subscores: dict) -> str:
         (key for key in WEIGHTS if key in subscores),
         key=lambda key: (100.0 - subscores[key]) * WEIGHTS[key],
     )
-    return f"{labels[factor]} is the biggest limitation tonight."
+    return f"{labels[factor]} is the biggest limitation {period}."
 
 
-def find_best_window(hourly_data: list[dict], lat: float, lon: float) -> dict:
+def find_best_window(
+    hourly_data: list[dict],
+    lat: float,
+    lon: float,
+    dark_window: tuple[datetime, datetime] | None = None,
+) -> dict:
     scored = []
     for hour in hourly_data:
         when = hour["time"]
+        if dark_window is not None and not (dark_window[0] <= when < dark_window[1]):
+            continue
         if not is_astronomical_darkness(when, lat, lon):
             continue
         score, subscores = compute_stargazing_score(
@@ -191,9 +198,14 @@ def find_best_window(hourly_data: list[dict], lat: float, lon: float) -> dict:
         and (scored[end + 1]["time"] - scored[end]["time"]).total_seconds() <= 5400
     ):
         end += 1
+    window_start = scored[start]["time"]
+    window_end = scored[end]["time"] + timedelta(hours=1)
+    if dark_window is not None:
+        window_start = max(window_start, dark_window[0])
+        window_end = min(window_end, dark_window[1])
     return {
-        "start": scored[start]["time"],
-        "end": scored[end]["time"],
+        "start": window_start,
+        "end": window_end,
         "best_score": best_score,
         "hours": scored[start : end + 1],
         "all_hours": scored,

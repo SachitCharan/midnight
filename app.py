@@ -240,25 +240,29 @@ if selected_match is not None:
             selected_noon.astimezone(timezone.utc), location["lat"], location["lon"], 30
         )
     selected_forecast = [
-        row for row in upcoming_forecast
+        row for row in forecast
         if selected_dark_window is not None
         and selected_dark_window[0] <= row["time"] < selected_dark_window[1]
     ]
-    coverage_start = current_hour if selected_night_label == night_labels[0] else None
-    complete_dark_window = hourly_data_covers_window(
-        selected_forecast, selected_dark_window, not_before=coverage_start
+    complete_dark_window = hourly_data_covers_window(selected_forecast, selected_dark_window)
+    best = (
+        find_best_window(selected_forecast, location["lat"], location["lon"], selected_dark_window)
+        if complete_dark_window else {}
     )
-    best = find_best_window(selected_forecast, location["lat"], location["lon"]) if complete_dark_window else {}
-    chart_a_title = "Tonight" if not night_labels or selected_night_label == night_labels[0] else f"Selected night — {selected_night_label}"
+    chart_a_title = (
+        f"Tonight — {selected_night_label}"
+        if night_labels and selected_night_label == night_labels[0]
+        else f"Selected night — {selected_night_label}"
+    )
     st.subheader(chart_a_title)
     if not complete_dark_window:
         st.warning(
-            "The forecast does not cover this night’s full remaining astronomical-darkness window, "
+            "The forecast does not cover this night’s full astronomical-darkness window, "
             "so Umbra will not report a best window from partial data."
         )
     elif best:
         local_start = best["start"].astimezone(local_zone)
-        local_end = (best["end"] + timedelta(hours=1)).astimezone(local_zone)
+        local_end = best["end"].astimezone(local_zone)
         if selected_dark_window is not None:
             darkness_start = selected_dark_window[0].astimezone(local_zone)
             darkness_end = selected_dark_window[1].astimezone(local_zone)
@@ -270,12 +274,28 @@ if selected_match is not None:
         timeline_rows = []
         for item in build_score_timeline(selected_forecast, location["lat"], location["lon"]):
             local_time = item["time"].astimezone(local_zone)
+            interval_end = min(item["time"] + timedelta(hours=1), selected_dark_window[1])
             timeline_rows.append({
                 "Local time": local_time,
-                "Interval end": local_time + timedelta(hours=1),
+                "Interval end": interval_end.astimezone(local_zone),
                 "Stargazing score": item["score"],
                 "Night segment": item["segment"],
-                "Best window": best["start"] <= item["time"] <= best["end"],
+                "Best window": item["time"] < best["end"] and interval_end > best["start"],
+                "Point type": "Forecast",
+            })
+        for boundary in selected_dark_window:
+            boundary_local = boundary.astimezone(local_zone)
+            timeline_rows.append({
+                "Local time": boundary_local, "Interval end": boundary_local,
+                "Stargazing score": None, "Night segment": None,
+                "Best window": False, "Point type": "Darkness boundary",
+            })
+        if selected_night_label == night_labels[0] and selected_dark_window[0] <= now <= selected_dark_window[1]:
+            now_local = now.astimezone(local_zone)
+            timeline_rows.append({
+                "Local time": now_local, "Interval end": now_local,
+                "Stargazing score": None, "Night segment": None,
+                "Best window": False, "Point type": "Current time",
             })
         timeline = pd.DataFrame(timeline_rows).sort_values("Local time").drop_duplicates("Local time")
         st.vega_lite_chart(timeline, {
@@ -295,7 +315,10 @@ if selected_match is not None:
                     "encoding": {
                         "x": {
                             "field": "Local time", "type": "temporal", "title": "Local date and time",
-                            "axis": {"format": "%b %d, %I %p", "labelAngle": -35, "labelOverlap": "greedy"},
+                            "axis": {
+                                "format": "%b %d, %I:%M %p", "labelAngle": -35,
+                                "labelOverlap": "greedy", "tickCount": 7,
+                            },
                         },
                         "y": {
                             "field": "Stargazing score", "type": "quantitative", "title": "Stargazing score (0–100)",
@@ -309,11 +332,25 @@ if selected_match is not None:
                         ],
                     },
                 },
+                {
+                    "transform": [{"filter": "datum['Point type'] === 'Darkness boundary'"}],
+                    "mark": {"type": "rule", "color": "#777FA3", "strokeDash": [2, 4], "opacity": 0.55},
+                    "encoding": {"x": {"field": "Local time", "type": "temporal"}},
+                },
+                {
+                    "transform": [{"filter": "datum['Point type'] === 'Current time'"}],
+                    "mark": {"type": "rule", "color": "#F2B880", "strokeDash": [5, 4], "size": 2},
+                    "encoding": {
+                        "x": {"field": "Local time", "type": "temporal"},
+                        "tooltip": [{"field": "Local time", "type": "temporal", "title": "Current time", "format": "%I:%M %p"}],
+                    },
+                },
             ],
         }, width="stretch")
         summary_prefix = "Best window tonight" if selected_night_label == night_labels[0] else f"Best window {selected_night_label}"
         peak_hour = max(best["hours"], key=lambda item: item["score"])
-        limitation = limiting_factor(peak_hour["subscores"])
+        limitation_period = "tonight" if selected_night_label == night_labels[0] else "that night"
+        limitation = limiting_factor(peak_hour["subscores"], limitation_period)
         st.caption(
             f"{summary_prefix}: conditions peak from {local_start.strftime('%I:%M %p')}–{local_end.strftime('%I:%M %p')} "
             f"at {best['best_score']:.0f}/100; {limitation[0].lower() + limitation[1:]}"
