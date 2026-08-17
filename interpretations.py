@@ -1,4 +1,4 @@
-"""Plain-language consequences for Umbra's numeric model outputs."""
+"""Plain-language consequences for Midnight's numeric model outputs."""
 
 from __future__ import annotations
 

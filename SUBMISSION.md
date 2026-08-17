@@ -1,4 +1,4 @@
-# Devpost submission copy
+# Midnight — Devpost submission copy
 
 ## Tagline
 
@@ -15,7 +15,7 @@ visible, local, and actionable.
 
 ## What it does
 
-Umbra accepts a location and produces a physically gated stargazing score,
+Midnight accepts a location and produces a physically gated stargazing score,
 factor-by-factor explanation, best viewing window, seven-night comparison,
 Moon and naked-eye planet visibility, meteor-shower context, and ranked nearby
 dark-sky candidates. It shows candidates on a map and in an accessible text
@@ -62,7 +62,7 @@ services fail.
 ## What we learned
 
 Environmental models become more trustworthy when their assumptions are visible.
-Umbra deliberately distinguishes modeled Bortle estimates from measurements and
+Midnight deliberately distinguishes modeled Bortle estimates from measurements and
 explains what each score factor means rather than hiding everything behind one
 number.
 
@@ -87,6 +87,6 @@ product, evaluated the outputs, and remains responsible for the submitted work.
 
 ## Links to fill before submission
 
-- Public GitHub repository: TODO
+- Public GitHub repository: https://github.com/SachitCharan/midnight
 - Live Streamlit app: TODO
 - Demo video (five minutes maximum): TODO

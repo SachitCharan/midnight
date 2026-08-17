@@ -1,4 +1,4 @@
-"""Dependency-free test runner for Umbra's pure logic."""
+"""Dependency-free test runner for Midnight's pure logic."""
 
 import math
 from datetime import datetime, timedelta, timezone

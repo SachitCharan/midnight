@@ -1,4 +1,4 @@
-"""Accessible Streamlit interface for the complete Umbra experience."""
+"""Accessible Streamlit interface for the complete Midnight experience."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ from scoring import (
 )
 from units import default_unit_system, distance_to_km, format_distance
 
-st.set_page_config(page_title="Umbra", page_icon="🌘", layout="centered")
+st.set_page_config(page_title="Midnight", page_icon="🌌", layout="centered")
 
 st.markdown("""
 <style>
@@ -61,7 +61,7 @@ div[data-testid="stMetric"] { border: 1px solid #62698c; border-radius: .7rem; p
 </style>
 """, unsafe_allow_html=True)
 
-st.title("UMBRA")
+st.title("MIDNIGHT")
 st.caption(
     "See whether the sky is worth watching tonight—and what is limiting it. "
     "Built for the world to help people reconnect with nature and support environmental health."
@@ -76,8 +76,8 @@ with st.form("location_form"):
 
 if submitted:
     if not query.strip():
-        st.session_state["umbra_matches"] = []
-        st.session_state["umbra_search_error"] = None
+        st.session_state["midnight_matches"] = []
+        st.session_state["midnight_search_error"] = None
         st.warning("Enter a city or place name.")
     else:
         with st.spinner("Finding matching locations…"):
@@ -97,13 +97,13 @@ if submitted:
                             if part is not None and str(part).strip()
                         ),
                     }]
-            st.session_state["umbra_matches"] = matches
-            st.session_state["umbra_search_error"] = location_error if not matches else None
+            st.session_state["midnight_matches"] = matches
+            st.session_state["midnight_search_error"] = location_error if not matches else None
             if matches:
                 st.session_state["location_choice"] = matches[0]["display_label"]
 
-matches = st.session_state.get("umbra_matches", [])
-search_error = st.session_state.get("umbra_search_error")
+matches = st.session_state.get("midnight_matches", [])
+search_error = st.session_state.get("midnight_search_error")
 if search_error:
     st.error(search_error)
 
@@ -266,7 +266,7 @@ if selected_match is not None:
     if not complete_dark_window:
         st.warning(
             "The forecast does not cover this night’s full astronomical-darkness window, "
-            "so Umbra will not report a best window from partial data."
+            "so Midnight will not report a best window from partial data."
         )
     elif best:
         local_start = best["start"].astimezone(local_zone)
@@ -640,7 +640,7 @@ if selected_match is not None:
         if sites else "No modeled candidate"
     )
     score_text = f"{current_score:.0f}/100 ({score_label(current_score)})" if current_score is not None else "Not dark yet"
-    summary_card = f"""# Umbra night-sky plan
+    summary_card = f"""# Midnight night-sky plan
 
 **Location:** {location['name']}, {location['admin1'] or location['country']}
 **Current state:** {score_text}
@@ -650,11 +650,11 @@ if selected_match is not None:
 **Top nearby candidate:** {top_site_text}
 **Biggest factor:** {limiting_factor(subscores) if current_score is not None else 'Astronomical darkness has not begun'}
 
-Modeled planning estimate from Umbra. Verify weather, access, closures, and land rules before traveling.
+Modeled planning estimate from Midnight. Verify weather, access, closures, and land rules before traveling.
 """
     st.download_button(
         "Download night-sky plan",
         summary_card,
-        file_name=f"umbra-{location['name'].lower().replace(' ', '-')}.md",
+        file_name=f"midnight-{location['name'].lower().replace(' ', '-')}.md",
         mime="text/markdown",
     )

@@ -1,12 +1,12 @@
-# Umbra
+# Midnight
 
-Umbra tells you whether you can see stars tonight, why you can't, and where to
+Midnight tells you whether you can see stars tonight, why you can't, and where to
 drive to fix it — by modeling light pollution, moonlight, and cloud cover from
 first principles.
 
 Light pollution is a measurable environmental problem: artificial night light
 disrupts nocturnal wildlife, migratory birds and insects, affects human
-circadian rhythms, and separates people from the night sky. Umbra makes that
+circadian rhythms, and separates people from the night sky. Midnight makes that
 otherwise gradual and invisible pollution understandable at a specific place.
 
 Built for the OregonHacks prompt: **Build technology that helps people reconnect
@@ -47,7 +47,7 @@ Run the dependency-free logic tests with `python test_logic.py`.
 
 ## Methodology
 
-Umbra computes low-precision solar and lunar coordinates directly from orbital
+Midnight computes low-precision solar and lunar coordinates directly from orbital
 elements. It transforms ecliptic longitude and latitude to right ascension and
 declination, uses local sidereal time to find altitude, derives lunar
 illumination from Sun–Moon elongation, and defines astronomical darkness as a
@@ -76,10 +76,10 @@ calendar of major annual showers rather than a live prediction service.
 
 Dark-site candidates use a hybrid search: a coarse coordinate grid finds dark
 gaps between towns, then each point must be within 25 km of a committed GeoNames
-place before it survives the land-safety filter. Umbra describes each surviving
+place before it survives the land-safety filter. Midnight describes each surviving
 point relative to the nearest named place and ranks the default view by modeled
 darkness gained per kilometer. Open-Meteo's Copernicus GLO-90 elevation lookup
-removes open-water cells; if it is unavailable, Umbra safely falls back to
+removes open-water cells; if it is unavailable, Midnight safely falls back to
 named land places. A top point can be replaced by a nearby named recreation
 feature only when OpenStreetMap explicitly confirms public access.
 
@@ -96,7 +96,7 @@ The Sun and Moon formulas intentionally trade precision for transparency and can
 have errors of a few arcminutes; the simplified planetary elements can have
 larger errors and are meant for broad naked-eye direction guidance. The five-minute darkness-window sampling,
 hourly weather resolution, straight composite weights, and forecast uncertainty
-also limit precision. Umbra is a planning aid, not an observatory-grade model.
+also limit precision. Midnight is a planning aid, not an observatory-grade model.
 
 As a fixed sanity check, the test suite compares the computed Saturn altitude
 for Portland at 2026-08-17 06:00 UTC with NASA/JPL Horizons (8.44°); the
