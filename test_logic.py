@@ -16,7 +16,7 @@ from astronomy import (
     visible_planets,
 )
 from light_pollution import artificial_brightness, bortle_class, darkness_score
-from scoring import build_score_timeline, compute_stargazing_score, find_best_window, limiting_factor, normalize_hourly_data, score_label, summarize_nights
+from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, limiting_factor, normalize_hourly_data, score_label, summarize_nights
 from data_sources import fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
 from dark_sites import distance_km, find_dark_sites
 from meteor_showers import meteor_activity
@@ -102,6 +102,13 @@ def test_network_failures_are_graceful() -> None:
     assert location is None and "unavailable" in geocode_error.lower()
     assert forecast == [] and "unavailable" in forecast_error.lower()
     assert air_quality == [] and "unavailable" in air_error.lower()
+
+
+def test_forecast_request_covers_seven_complete_nights() -> None:
+    fetch_forecast.clear()
+    with patch("data_sources.requests.get", side_effect=requests.ConnectionError("offline")) as get:
+        fetch_forecast(45.5, -122.7)
+    assert get.call_args.kwargs["params"]["forecast_days"] == 8
 
 
 def test_empty_geocode_result_is_clean() -> None:
@@ -254,6 +261,15 @@ def test_hourly_series_sorts_deduplicates_and_breaks_in_daylight() -> None:
     assert math.isnan(next(item["score"] for item in timeline if item["time"].hour == 12))
     assert not math.isnan(next(item["score"] for item in timeline if item["time"].hour == 0))
     assert next(item["segment"] for item in timeline if item["time"].hour == 12) is None
+
+
+def test_best_window_requires_complete_darkness_window() -> None:
+    start = datetime(2026, 12, 21, 0, 20, tzinfo=UTC)
+    end = datetime(2026, 12, 21, 5, 20, tzinfo=UTC)
+    complete = [{"time": datetime(2026, 12, 21, hour, tzinfo=UTC)} for hour in range(1, 6)]
+    assert hourly_data_covers_window(complete, (start, end))
+    assert not hourly_data_covers_window(complete[:-1], (start, end))
+    assert hourly_data_covers_window(complete[2:], (start, end), not_before=complete[2]["time"])
 
 
 def run_tests() -> None:

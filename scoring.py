@@ -32,6 +32,36 @@ def normalize_hourly_data(hourly_data: list[dict]) -> list[dict]:
     return normalized
 
 
+def hourly_data_covers_window(
+    hourly_data: list[dict],
+    dark_window: tuple[datetime, datetime] | None,
+    not_before: datetime | None = None,
+) -> bool:
+    """Return whether every hourly sample in a dark interval is available."""
+    if dark_window is None:
+        return True
+    rows = normalize_hourly_data(hourly_data)
+    if not rows:
+        return False
+    start, end = dark_window
+    if not_before is not None:
+        start = max(start, not_before)
+    first_hour = start.replace(minute=0, second=0, microsecond=0)
+    if first_hour < start:
+        first_hour += timedelta(hours=1)
+    last_hour = (end - timedelta(microseconds=1)).replace(minute=0, second=0, microsecond=0)
+    if first_hour > last_hour:
+        return True
+    available = {row["time"].astimezone(timezone.utc) for row in rows}
+    current = first_hour.astimezone(timezone.utc)
+    last = last_hour.astimezone(timezone.utc)
+    while current <= last:
+        if current not in available:
+            return False
+        current += timedelta(hours=1)
+    return True
+
+
 def build_score_timeline(hourly_data: list[dict], lat: float, lon: float) -> list[dict]:
     """Return one point per hour, using NaN to break the line during daylight."""
     timeline = []

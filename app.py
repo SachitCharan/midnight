@@ -25,6 +25,7 @@ from scoring import (
     build_score_timeline,
     compute_stargazing_score,
     find_best_window,
+    hourly_data_covers_window,
     limiting_factor,
     normalize_hourly_data,
     score_label,
@@ -218,10 +219,25 @@ if selected_match is not None:
         if selected_date is not None
         and (row["time"].astimezone(local_zone) - timedelta(hours=12)).date() == selected_date
     ]
-    best = find_best_window(selected_forecast, location["lat"], location["lon"])
+    selected_dark_window = None
+    if selected_date is not None:
+        selected_noon = datetime.combine(selected_date, datetime.min.time(), tzinfo=local_zone) + timedelta(hours=12)
+        selected_dark_window = find_dark_window(
+            selected_noon.astimezone(timezone.utc), location["lat"], location["lon"], 30
+        )
+    coverage_start = current_hour if selected_night_label == night_labels[0] else None
+    complete_dark_window = hourly_data_covers_window(
+        selected_forecast, selected_dark_window, not_before=coverage_start
+    )
+    best = find_best_window(selected_forecast, location["lat"], location["lon"]) if complete_dark_window else {}
     chart_a_title = "Tonight" if not night_labels or selected_night_label == night_labels[0] else f"Selected night — {selected_night_label}"
     st.subheader(chart_a_title)
-    if best:
+    if not complete_dark_window:
+        st.warning(
+            "The forecast does not cover this night’s full remaining astronomical-darkness window, "
+            "so Umbra will not report a best window from partial data."
+        )
+    elif best:
         local_start = best["start"].astimezone(local_zone)
         local_end = (best["end"] + timedelta(hours=1)).astimezone(local_zone)
         st.write(
@@ -231,8 +247,6 @@ if selected_match is not None:
         timeline_rows = []
         for item in build_score_timeline(selected_forecast, location["lat"], location["lon"]):
             local_time = item["time"].astimezone(local_zone)
-            if not pd.notna(item["score"]):
-                continue
             timeline_rows.append({
                 "Local time": local_time,
                 "Interval end": local_time + timedelta(hours=1),
@@ -275,10 +289,17 @@ if selected_match is not None:
             ],
         }, width="stretch")
         summary_prefix = "Best window tonight" if selected_night_label == night_labels[0] else f"Best window {selected_night_label}"
+        peak_hour = max(best["hours"], key=lambda item: item["score"])
+        limitation = limiting_factor(peak_hour["subscores"])
         st.caption(
-            f"{summary_prefix}: {local_start.strftime('%I:%M %p')}–{local_end.strftime('%I:%M %p')}, "
-            f"score {best['best_score']:.0f}/100."
+            f"{summary_prefix}: conditions peak from {local_start.strftime('%I:%M %p')}–{local_end.strftime('%I:%M %p')} "
+            f"at {best['best_score']:.0f}/100; {limitation[0].lower() + limitation[1:]}"
         )
+        st.caption(
+            "Legend: the line is the hourly stargazing score; the highlighted band is the best window; "
+            "gaps are daylight, when no score is calculated."
+        )
+        st.caption("Scale: 85–100 Excellent · 70–84 Good · 50–69 Fair · 30–49 Poor · below 30 Don’t bother.")
     else:
         st.info("No astronomical darkness occurs for this location on the selected night.")
 
