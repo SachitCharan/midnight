@@ -42,16 +42,17 @@ div[data-testid="stMetric"] { border: 1px solid #62698c; border-radius: .7rem; p
 """, unsafe_allow_html=True)
 
 st.title("UMBRA")
-st.caption("See whether the sky is worth watching tonight—and what is limiting it.")
-st.write(
-    "Umbra models astronomical darkness, moonlight, weather, and artificial sky "
-    "brightness to make light pollution visible and personal."
+st.caption(
+    "See whether the sky is worth watching tonight—and what is limiting it. "
+    "Built for OregonHacks to help people reconnect with nature and support environmental health."
 )
-st.info("Built for OregonHacks: technology that helps people reconnect with nature and supports environmental health.")
 
 with st.form("location_form"):
-    query = st.text_input("Location", placeholder="Portland, Oregon", key="location_query")
-    submitted = st.form_submit_button("Check tonight")
+    search_columns = st.columns([5, 1])
+    with search_columns[0]:
+        query = st.text_input("Location", placeholder="Portland, Oregon", key="location_query")
+    with search_columns[1]:
+        submitted = st.form_submit_button("Check tonight")
 
 if submitted:
     if not query.strip():
@@ -112,23 +113,27 @@ if selected_match is not None:
     if st.session_state.get("unit_country_code") != country_code:
         st.session_state["unit_system"] = default_unit_system(country_code)
         st.session_state["unit_country_code"] = country_code
-    unit_system = st.sidebar.radio(
-        "Distance units",
-        ["Metric (km)", "Imperial (mi)"],
-        key="unit_system",
-    )
-    if unit_system == "Imperial (mi)":
-        distance_value = st.sidebar.slider(
-            "Maximum straight-line search distance (miles)", 15, 95, 60, 10,
-            key="max_distance_imperial",
-            help="Road distance may be longer; verify access and conditions before traveling.",
+    settings_columns = st.columns([2, 1])
+    with settings_columns[1]:
+        unit_system = st.radio(
+            "Distance units",
+            ["Metric (km)", "Imperial (mi)"],
+            key="unit_system",
+            horizontal=True,
         )
-    else:
-        distance_value = st.sidebar.slider(
-            "Maximum straight-line search distance (km)", 25, 150, 100, 25,
-            key="max_distance_metric",
-            help="Road distance may be longer; verify access and conditions before traveling.",
-        )
+    with settings_columns[0]:
+        if unit_system == "Imperial (mi)":
+            distance_value = st.slider(
+                "Maximum straight-line search distance (miles)", 15, 95, 60, 10,
+                key="max_distance_imperial",
+                help="Road distance may be longer; verify access and conditions before traveling.",
+            )
+        else:
+            distance_value = st.slider(
+                "Maximum straight-line search distance (km)", 25, 150, 100, 25,
+                key="max_distance_metric",
+                help="Road distance may be longer; verify access and conditions before traveling.",
+            )
     max_distance_km = distance_to_km(distance_value, unit_system)
 
 if selected_match is not None:
@@ -144,16 +149,15 @@ if selected_match is not None:
 
     brightness = artificial_brightness(location["lat"], location["lon"], centers)
     bortle = bortle_class(brightness)
-    st.metric("Modeled Bortle class", f"{bortle} / 9")
-    st.caption(bortle_description(bortle))
-    st.caption("This is a modeled estimate, not a direct radiometric measurement.")
-
     expectations = visibility_expectations(bortle)
-    st.subheader("What this sky reveals")
-    st.write(f"**Likely visible:** {expectations['visible']}")
-    st.write(f"**Hidden by skyglow:** {expectations['missing']}")
 
     if forecast_error or not forecast:
+        st.metric("Modeled Bortle class", f"{bortle} / 9")
+        st.caption(bortle_description(bortle))
+        st.caption("This is a modeled estimate, not a direct radiometric measurement.")
+        st.subheader("What this sky reveals")
+        st.write(f"**Likely visible:** {expectations['visible']}")
+        st.write(f"**Hidden by skyglow:** {expectations['missing']}")
         st.warning(forecast_error or "No forecast hours were returned.")
         st.stop()
 
@@ -184,6 +188,13 @@ if selected_match is not None:
         st.subheader("Score breakdown")
         for factor, value in subscores.items():
             st.write(f"{factor.replace('_', ' ').title()}: **{value:.0f} / 100**")
+
+    st.metric("Modeled Bortle class", f"{bortle} / 9")
+    st.caption(bortle_description(bortle))
+    st.caption("This is a modeled estimate, not a direct radiometric measurement.")
+    st.subheader("What this sky reveals")
+    st.write(f"**Likely visible:** {expectations['visible']}")
+    st.write(f"**Hidden by skyglow:** {expectations['missing']}")
 
     current_hour = now.replace(minute=0, second=0, microsecond=0)
     upcoming_forecast = [row for row in forecast if row["time"] >= current_hour]
