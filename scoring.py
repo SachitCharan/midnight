@@ -100,6 +100,14 @@ def find_best_window(hourly_data: list[dict], lat: float, lon: float) -> dict:
         scored.append({"time": when, "score": score, "subscores": subscores})
     if not scored:
         return {}
+    # This function's contract is tonight, not the strongest hour anywhere in
+    # the multi-day forecast. Keep only the first contiguous upcoming dark run.
+    tonight = [scored[0]]
+    for item in scored[1:]:
+        if (item["time"] - tonight[-1]["time"]).total_seconds() > 5400:
+            break
+        tonight.append(item)
+    scored = tonight
     best_score = max(item["score"] for item in scored)
     threshold = max(0.0, best_score - 5.0)
     best_index = max(range(len(scored)), key=lambda index: scored[index]["score"])

@@ -200,6 +200,29 @@ def test_meteor_calendar_and_multi_night_summary() -> None:
     assert all(0 <= night["score"] <= 100 for night in nights)
 
 
+def test_best_window_is_first_upcoming_dark_interval_and_timezone_aware() -> None:
+    start = datetime(2026, 12, 20, 0, tzinfo=UTC)
+    hourly = []
+    for index in range(48):
+        when = start + timedelta(hours=index)
+        # Make the second night much clearer; tonight must still win by scope.
+        hourly.append({
+            "time": when,
+            "cloud_cover": 80 if index < 18 else 0,
+            "brightness_index": 10,
+            "visibility": 18000,
+            "relative_humidity_2m": 50,
+        })
+    best = find_best_window(hourly, 45, 0)
+    assert best
+    assert best["start"].date() == start.date()
+    assert all(item["time"].tzinfo is not None for item in best["all_hours"])
+    assert all(
+        (best["all_hours"][index + 1]["time"] - best["all_hours"][index]["time"]).total_seconds() <= 5400
+        for index in range(len(best["all_hours"]) - 1)
+    )
+
+
 def run_tests() -> None:
     tests = [value for name, value in sorted(globals().items()) if name.startswith("test_")]
     for test in tests:

@@ -176,8 +176,10 @@ if selected_match is not None:
         for factor, value in subscores.items():
             st.write(f"{factor.replace('_', ' ').title()}: **{value:.0f} / 100**")
 
-    best = find_best_window(forecast, location["lat"], location["lon"])
-    st.subheader("Best viewing window")
+    current_hour = now.replace(minute=0, second=0, microsecond=0)
+    upcoming_forecast = [row for row in forecast if row["time"] >= current_hour]
+    best = find_best_window(upcoming_forecast, location["lat"], location["lon"])
+    st.subheader("Tonight's best viewing window")
     if best:
         local_start = best["start"].astimezone(local_zone)
         local_end = (best["end"] + timedelta(hours=1)).astimezone(local_zone)
@@ -192,14 +194,14 @@ if selected_match is not None:
         }).set_index("Local time")
         st.line_chart(timeline, y="Stargazing score", color="#D8A7FF")
         st.caption(
-            f"Timeline summary: the best modeled score is {best['best_score']:.0f}/100, "
+            f"Tonight summary: the best modeled score is {best['best_score']:.0f}/100, "
             f"beginning near {local_start.strftime('%I:%M %p')} local time."
         )
     else:
-        st.write("No astronomical-darkness window appears in the available forecast.")
+        st.write("No astronomical-darkness window appears tonight.")
 
     st.subheader("Best night this week")
-    nights = summarize_nights(forecast, location["lat"], location["lon"], location["timezone"])
+    nights = summarize_nights(upcoming_forecast, location["lat"], location["lon"], location["timezone"])
     if nights:
         best_night = max(nights, key=lambda night: night["score"])
         night_chart = pd.DataFrame({
