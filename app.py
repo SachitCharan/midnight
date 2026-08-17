@@ -261,6 +261,7 @@ if selected_match is not None:
             darkness_start = selected_dark_window[0].astimezone(local_zone)
             darkness_end = selected_dark_window[1].astimezone(local_zone)
             st.caption(interpret_darkness_window(darkness_start, darkness_end))
+            chart_time_domain = [darkness_start.isoformat(), darkness_end.isoformat()]
         st.write(
             f"Best viewing window: {local_start.strftime('%b %d, %I:%M %p')}–{local_end.strftime('%I:%M %p %Z')} "
             f"with a peak modeled score of **{best['best_score']:.0f}/100** — {interpret_score(best['best_score'])}"
@@ -309,6 +310,7 @@ if selected_match is not None:
                     "encoding": {
                         "x": {
                             "field": "Local time", "type": "temporal", "title": "Local date and time",
+                            "scale": {"domain": chart_time_domain},
                             "axis": {
                                 "format": "%b %d, %I:%M %p", "labelAngle": -35,
                                 "labelOverlap": "greedy", "tickCount": 7,
@@ -340,7 +342,7 @@ if selected_match is not None:
                     },
                 },
             ],
-        }, width="stretch")
+        }, width="stretch", key=f"detailed-night-{night_location_key}-{selected_date.isoformat()}")
         summary_prefix = "Best window tonight" if selected_night_label == night_labels[0] else f"Best window {selected_night_label}"
         peak_hour = max(best["hours"], key=lambda item: item["score"])
         limitation_period = "tonight" if selected_night_label == night_labels[0] else "that night"
