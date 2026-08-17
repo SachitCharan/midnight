@@ -187,21 +187,40 @@ if selected_match is not None:
 
     current_hour = now.replace(minute=0, second=0, microsecond=0)
     upcoming_forecast = [row for row in forecast if row["time"] >= current_hour]
-    best = find_best_window(upcoming_forecast, location["lat"], location["lon"])
-    st.subheader("Tonight's best viewing window")
+    nights = summarize_nights(upcoming_forecast, location["lat"], location["lon"], location["timezone"])[:7]
+    night_labels = [night["date"].strftime("%a, %b %d") for night in nights]
+    night_location_key = selected_match["display_label"]
+    if (
+        st.session_state.get("night_location_key") != night_location_key
+        or st.session_state.get("selected_night") not in night_labels
+    ):
+        st.session_state["night_location_key"] = night_location_key
+        st.session_state["selected_night"] = night_labels[0] if night_labels else None
+
+    selected_night_label = st.session_state.get("selected_night")
+    selected_date = (
+        nights[night_labels.index(selected_night_label)]["date"]
+        if selected_night_label in night_labels else None
+    )
+    selected_forecast = [
+        row for row in upcoming_forecast
+        if selected_date is not None
+        and (row["time"].astimezone(local_zone) - timedelta(hours=12)).date() == selected_date
+    ]
+    best = find_best_window(selected_forecast, location["lat"], location["lon"])
+    chart_a_title = "Tonight" if not night_labels or selected_night_label == night_labels[0] else f"Selected night — {selected_night_label}"
+    st.subheader(chart_a_title)
     if best:
         local_start = best["start"].astimezone(local_zone)
         local_end = (best["end"] + timedelta(hours=1)).astimezone(local_zone)
-        end = best["end"] + timedelta(hours=1)
         st.write(
-            f"{local_start.strftime('%b %d, %I:%M %p')}–{local_end.strftime('%I:%M %p %Z')} "
+            f"Best viewing window: {local_start.strftime('%b %d, %I:%M %p')}–{local_end.strftime('%I:%M %p %Z')} "
             f"with a peak modeled score of **{best['best_score']:.0f}/100**."
         )
-        observing_date = (local_start - timedelta(hours=12)).date()
         timeline_rows = []
-        for item in build_score_timeline(upcoming_forecast, location["lat"], location["lon"]):
+        for item in build_score_timeline(selected_forecast, location["lat"], location["lon"]):
             local_time = item["time"].astimezone(local_zone)
-            if (local_time - timedelta(hours=12)).date() != observing_date:
+            if not pd.notna(item["score"]):
                 continue
             timeline_rows.append({
                 "Local time": local_time,
@@ -244,30 +263,48 @@ if selected_match is not None:
                 },
             ],
         }, width="stretch")
+        summary_prefix = "Best window tonight" if selected_night_label == night_labels[0] else f"Best window {selected_night_label}"
         st.caption(
-            f"Tonight summary: the best modeled score is {best['best_score']:.0f}/100, "
-            f"beginning near {local_start.strftime('%I:%M %p')} local time."
+            f"{summary_prefix}: {local_start.strftime('%I:%M %p')}–{local_end.strftime('%I:%M %p')}, "
+            f"score {best['best_score']:.0f}/100."
         )
     else:
-        st.write("No astronomical-darkness window appears tonight.")
+        st.info("No astronomical darkness occurs for this location on the selected night.")
 
-    st.subheader("Best night this week")
-    nights = summarize_nights(upcoming_forecast, location["lat"], location["lon"], location["timezone"])
+    st.subheader("Next 7 nights")
     if nights:
         best_night = max(nights, key=lambda night: night["score"])
         night_chart = pd.DataFrame({
-            "Night": [night["date"].strftime("%a %b %d") for night in nights],
+            "Night": night_labels,
             "Best score": [night["score"] for night in nights],
-        }).set_index("Night")
-        st.bar_chart(night_chart, y="Best score", color="#F2B880")
+            "Selected": [label == selected_night_label for label in night_labels],
+        })
+        st.vega_lite_chart(night_chart, {
+            "padding": {"left": 20, "right": 10, "top": 5, "bottom": 10},
+            "mark": {"type": "bar", "cornerRadiusTopLeft": 4, "cornerRadiusTopRight": 4},
+            "encoding": {
+                "x": {"field": "Night", "type": "nominal", "sort": night_labels, "title": "Observing night", "axis": {"labelAngle": -30}},
+                "y": {"field": "Best score", "type": "quantitative", "title": "Peak score", "scale": {"domain": [0, 100], "nice": False}, "axis": {"titlePadding": 12}},
+                "color": {
+                    "condition": {"test": "datum.Selected === true", "value": "#F2B880"},
+                    "value": "#777FA3",
+                    "legend": None,
+                },
+                "tooltip": [
+                    {"field": "Night", "type": "nominal", "title": "Night"},
+                    {"field": "Best score", "type": "quantitative", "title": "Peak score", "format": ".0f"},
+                ],
+            },
+        }, width="stretch")
         best_night_local = best_night["time"].astimezone(local_zone)
         st.caption(
-            f"Weekly summary: {best_night_local.strftime('%A, %b %d')} is the strongest forecast night "
-            f"with a peak score of {best_night['score']:.0f}/100 near {best_night_local.strftime('%I:%M %p')}."
+            f"Seven-night summary: {best_night_local.strftime('%A, %b %d')} is strongest at "
+            f"{best_night['score']:.0f}/100; {selected_night_label} is selected for the detailed chart above."
         )
+        st.selectbox("Choose a night to inspect", night_labels, key="selected_night")
     else:
         best_night = None
-        st.write("No astronomical darkness appears in the seven-day forecast.")
+        st.info("No astronomical darkness appears in the next seven nights, so no nightly chart is shown.")
 
     st.subheader("Moon, planets, and meteors")
     observing_time = best["start"] if best else now
