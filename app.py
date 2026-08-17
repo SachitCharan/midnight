@@ -130,7 +130,10 @@ if selected_match is not None:
         "timezone": selected_match.get("timezone", "UTC"),
     }
     country_code = location["country_code"].upper()
-    if st.session_state.get("unit_country_code") != country_code:
+    if (
+        st.session_state.get("unit_country_code") != country_code
+        or "unit_system" not in st.session_state
+    ):
         st.session_state["unit_system"] = default_unit_system(country_code)
         st.session_state["unit_country_code"] = country_code
     settings_columns = st.columns([2, 1])
