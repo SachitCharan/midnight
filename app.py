@@ -224,22 +224,26 @@ if selected_match is not None:
         st.session_state["night_location_key"] = night_location_key
         st.session_state["selected_night"] = night_labels[0] if night_labels else None
 
-    selected_night_label = st.session_state.get("selected_night")
-    selected_date = (
-        nights[night_labels.index(selected_night_label)]["date"]
-        if selected_night_label in night_labels else None
+    selected_night_label = (
+        st.selectbox("Choose a night to inspect", night_labels, key="selected_night")
+        if night_labels else None
     )
-    selected_forecast = [
-        row for row in upcoming_forecast
-        if selected_date is not None
-        and (row["time"].astimezone(local_zone) - timedelta(hours=12)).date() == selected_date
-    ]
+    selected_night = next(
+        (night for night, label in zip(nights, night_labels) if label == selected_night_label),
+        None,
+    )
+    selected_date = selected_night["date"] if selected_night is not None else None
     selected_dark_window = None
     if selected_date is not None:
         selected_noon = datetime.combine(selected_date, datetime.min.time(), tzinfo=local_zone) + timedelta(hours=12)
         selected_dark_window = find_dark_window(
             selected_noon.astimezone(timezone.utc), location["lat"], location["lon"], 30
         )
+    selected_forecast = [
+        row for row in upcoming_forecast
+        if selected_dark_window is not None
+        and selected_dark_window[0] <= row["time"] < selected_dark_window[1]
+    ]
     coverage_start = current_hour if selected_night_label == night_labels[0] else None
     complete_dark_window = hourly_data_covers_window(
         selected_forecast, selected_dark_window, not_before=coverage_start
@@ -353,7 +357,6 @@ if selected_match is not None:
             f"{best_night['score']:.0f}/100 — {interpret_score(best_night['score'])} "
             f"{selected_night_label} is selected for the detailed chart above."
         )
-        st.selectbox("Choose a night to inspect", night_labels, key="selected_night")
     else:
         best_night = None
         st.info("No astronomical darkness appears in the next seven nights, so no nightly chart is shown.")
