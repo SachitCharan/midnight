@@ -43,6 +43,7 @@ from scoring import (
     compute_stargazing_score,
     find_best_window,
     hourly_data_covers_window,
+    is_flat_night,
     limiting_factor,
     normalize_hourly_data,
     precompute_night_views,
@@ -250,6 +251,7 @@ if selected_match is not None:
         else f"Selected night — {selected_night_label}"
     )
     st.subheader(chart_a_title)
+    flat_night = False
     if not complete_dark_window:
         st.warning(
             "The forecast does not cover this night’s full astronomical-darkness window, "
@@ -258,44 +260,64 @@ if selected_match is not None:
     elif best:
         local_start = best["start"].astimezone(local_zone)
         local_end = best["end"].astimezone(local_zone)
+        night_scores = [item["score"] for item in best["all_hours"]]
+        score_min = min(night_scores)
+        score_max = max(night_scores)
+        flat_night = is_flat_night(night_scores)
+        selected_period = "tonight" if selected_night_label == night_labels[0] else "that night"
         if selected_dark_window is not None:
             darkness_start = selected_dark_window[0].astimezone(local_zone)
             darkness_end = selected_dark_window[1].astimezone(local_zone)
             st.caption(interpret_darkness_window(darkness_start, darkness_end))
             chart_time_domain = [darkness_start.isoformat(), darkness_end.isoformat()]
-        st.write(
-            f"Best viewing window: {local_start.strftime('%b %d, %I:%M %p')}–{local_end.strftime('%I:%M %p %Z')} "
-            f"with a peak modeled score of **{best['best_score']:.0f}/100** — {interpret_score(best['best_score'])}"
-        )
+        if flat_night:
+            st.write(
+                f"Conditions barely change {selected_period} ({score_min:.0f}–{score_max:.0f}). "
+                "Any time in the darkness window works equally well."
+            )
+        else:
+            st.write(
+                f"Best viewing window: {local_start.strftime('%b %d, %I:%M %p')}–{local_end.strftime('%I:%M %p %Z')} "
+                f"with a peak modeled score of **{best['best_score']:.0f}/100** — {interpret_score(best['best_score'])}"
+            )
         timeline_rows = []
         for item in selected_view["timeline"]:
             local_time = item["time"].astimezone(local_zone)
             interval_end = min(item["time"] + timedelta(hours=1), selected_dark_window[1])
             timeline_rows.append({
                 "Local time": local_time,
+                "Exact time": local_time.strftime("%b %d, %I:%M %p %Z").replace(" 0", " "),
                 "Interval end": interval_end.astimezone(local_zone),
                 "Stargazing score": item["score"],
+                "Limited by": f"limited by {item['limiting_factor']}",
                 "Night segment": item["segment"],
-                "Best window": item["time"] < best["end"] and interval_end > best["start"],
+                "Best window": (
+                    not flat_night
+                    and item["time"] < best["end"]
+                    and interval_end > best["start"]
+                ),
                 "Point type": "Forecast",
             })
         for boundary in selected_dark_window:
             boundary_local = boundary.astimezone(local_zone)
             timeline_rows.append({
                 "Local time": boundary_local, "Interval end": boundary_local,
-                "Stargazing score": None, "Night segment": None,
+                "Exact time": boundary_local.strftime("%b %d, %I:%M %p %Z").replace(" 0", " "),
+                "Stargazing score": None, "Limited by": None, "Night segment": None,
                 "Best window": False, "Point type": "Darkness boundary",
             })
         if selected_night_label == night_labels[0] and selected_dark_window[0] <= now <= selected_dark_window[1]:
             now_local = now.astimezone(local_zone)
             timeline_rows.append({
                 "Local time": now_local, "Interval end": now_local,
-                "Stargazing score": None, "Night segment": None,
+                "Exact time": now_local.strftime("%b %d, %I:%M %p %Z").replace(" 0", " "),
+                "Stargazing score": None, "Limited by": None, "Night segment": None,
                 "Best window": False, "Point type": "Current time",
             })
         timeline = pd.DataFrame(timeline_rows).sort_values("Local time").drop_duplicates("Local time")
         st.vega_lite_chart(timeline, {
-            "padding": {"left": 25, "right": 10, "top": 10, "bottom": 20},
+            "height": 370,
+            "padding": {"left": 25, "right": 10, "top": 10, "bottom": 55},
             "layer": [
                 {
                     "transform": [{"filter": "datum['Best window'] === true"}],
@@ -315,17 +337,19 @@ if selected_match is not None:
                             "axis": {
                                 "format": "%b %d, %I:%M %p", "labelAngle": -35,
                                 "labelOverlap": "greedy", "tickCount": 7,
+                                "titlePadding": 18,
                             },
                         },
                         "y": {
                             "field": "Stargazing score", "type": "quantitative", "title": "Stargazing score (0–100)",
                             "scale": {"domain": [0, 100], "clamp": True, "nice": False},
-                            "axis": {"titlePadding": 14},
+                            "axis": {"titlePadding": 14, "values": [0, 20, 40, 60, 80, 100]},
                         },
                         "detail": {"field": "Night segment", "type": "nominal"},
                         "tooltip": [
-                            {"field": "Local time", "type": "temporal", "title": "Local time", "format": "%b %d, %I:%M %p"},
-                            {"field": "Stargazing score", "type": "quantitative", "title": "Score", "format": ".0f"},
+                            {"field": "Exact time", "type": "nominal", "title": "Time"},
+                            {"field": "Stargazing score", "type": "quantitative", "title": "Score", "format": ".1f"},
+                            {"field": "Limited by", "type": "nominal", "title": "Limitation"},
                         ],
                     },
                 },
@@ -343,19 +367,28 @@ if selected_match is not None:
                     },
                 },
             ],
-        }, width="stretch", key=f"detailed-night-{night_location_key}-{selected_date.isoformat()}")
+        }, width="stretch", height=370, key=f"detailed-night-{night_location_key}-{selected_date.isoformat()}")
         summary_prefix = "Best window tonight" if selected_night_label == night_labels[0] else f"Best window {selected_night_label}"
         peak_hour = max(best["hours"], key=lambda item: item["score"])
         limitation_period = "tonight" if selected_night_label == night_labels[0] else "that night"
         limitation = limiting_factor(peak_hour["subscores"], limitation_period)
-        st.caption(
-            f"{summary_prefix}: conditions peak from {local_start.strftime('%I:%M %p')}–{local_end.strftime('%I:%M %p')} "
-            f"at {best['best_score']:.0f}/100; {limitation[0].lower() + limitation[1:]}"
-        )
-        st.caption(
-            "Legend: the line is the hourly stargazing score; the highlighted band is the best window; "
-            "gaps are daylight, when no score is calculated."
-        )
+        if flat_night:
+            st.caption(
+                f"The modeled score stays between {score_min:.0f} and {score_max:.0f} {selected_period}; "
+                f"{limitation[0].lower() + limitation[1:]}"
+            )
+        else:
+            st.caption(
+                f"{summary_prefix}: conditions peak from {local_start.strftime('%I:%M %p')}–{local_end.strftime('%I:%M %p')} "
+                f"at {best['best_score']:.0f}/100; {limitation[0].lower() + limitation[1:]}"
+            )
+        if flat_night:
+            st.caption("Legend: the line is the hourly stargazing score; no best-window band is shown because conditions are nearly constant.")
+        else:
+            st.caption(
+                "Legend: the line is the hourly stargazing score; the highlighted band is the best window; "
+                "gaps are daylight, when no score is calculated."
+            )
         st.caption("Scale: 85–100 Excellent · 70–84 Good · 50–69 Fair · 30–49 Poor · below 30 Don’t bother.")
     else:
         st.info("No astronomical darkness occurs for this location on the selected night.")
@@ -548,11 +581,15 @@ if selected_match is not None:
         (st.success if bortle <= 4 else st.info)(guidance)
 
     st.subheader("Take this plan with you")
-    best_window_text = (
-        f"{best['start'].astimezone(local_zone).strftime('%b %d, %I:%M %p')}–"
-        f"{(best['end'] + timedelta(hours=1)).astimezone(local_zone).strftime('%I:%M %p %Z')}"
-        if best else "No astronomical-darkness window in the forecast"
-    )
+    if best and flat_night:
+        best_window_text = "Any time during astronomical darkness; conditions are nearly constant"
+    elif best:
+        best_window_text = (
+            f"{best['start'].astimezone(local_zone).strftime('%b %d, %I:%M %p')}–"
+            f"{best['end'].astimezone(local_zone).strftime('%I:%M %p %Z')}"
+        )
+    else:
+        best_window_text = "No astronomical-darkness window in the forecast"
     top_site_text = (
         f"{sites[0]['name']} ({format_distance(sites[0]['distance_km'], unit_system)} straight-line, Bortle {sites[0]['bortle']})"
         if sites else "No modeled candidate"

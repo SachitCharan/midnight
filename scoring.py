@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from datetime import timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -73,16 +74,22 @@ def build_score_timeline(hourly_data: list[dict], lat: float, lon: float) -> lis
     for hour in normalize_hourly_data(hourly_data):
         when = hour["time"]
         score = float("nan")
+        subscores = {}
         dark = is_astronomical_darkness(when, lat, lon)
         if dark:
             if not was_dark:
                 segment += 1
-            score, _ = compute_stargazing_score(
+            score, subscores = compute_stargazing_score(
                 hour.get("cloud_cover", 0), hour["brightness_index"], moon_illumination(when),
                 moon_altitude(when, lat, lon), hour.get("visibility", 20000),
                 hour.get("relative_humidity_2m", 50),
             )
-        timeline.append({"time": when, "score": score, "segment": segment if dark else None})
+        timeline.append({
+            "time": when,
+            "score": score,
+            "segment": segment if dark else None,
+            "limiting_factor": limiting_factor_name(subscores) if subscores else None,
+        })
         was_dark = dark
     return timeline
 
@@ -151,6 +158,25 @@ def limiting_factor(subscores: dict, period: str = "tonight") -> str:
         key=lambda key: (100.0 - subscores[key]) * WEIGHTS[key],
     )
     return f"{labels[factor]} is the biggest limitation {period}."
+
+
+def limiting_factor_name(subscores: dict) -> str:
+    labels = {
+        "cloud_cover": "cloud cover",
+        "light_pollution": "light pollution",
+        "moon": "moonlight",
+        "atmosphere": "atmospheric conditions",
+    }
+    factor = max(
+        (key for key in WEIGHTS if key in subscores),
+        key=lambda key: (100.0 - subscores[key]) * WEIGHTS[key],
+    )
+    return labels[factor]
+
+
+def is_flat_night(scores: list[float], threshold: float = 10.0) -> bool:
+    finite_scores = [float(score) for score in scores if math.isfinite(float(score))]
+    return bool(finite_scores) and max(finite_scores) - min(finite_scores) < threshold
 
 
 def find_best_window(

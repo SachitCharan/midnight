@@ -31,7 +31,7 @@ from interpretations import (
     interpret_smoke,
     visibility_snapshot,
 )
-from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, limiting_factor, normalize_hourly_data, precompute_night_views, score_label, summarize_nights
+from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, is_flat_night, limiting_factor, limiting_factor_name, normalize_hourly_data, precompute_night_views, score_label, summarize_nights
 from data_sources import enrich_dark_sites_with_osm, fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
 from dark_sites import distance_km, find_dark_sites, google_maps_url, is_darker_than_start
 from meteor_showers import meteor_activity
@@ -393,6 +393,15 @@ def test_hourly_series_sorts_deduplicates_and_breaks_in_daylight() -> None:
     assert math.isnan(next(item["score"] for item in timeline if item["time"].hour == 12))
     assert not math.isnan(next(item["score"] for item in timeline if item["time"].hour == 0))
     assert next(item["segment"] for item in timeline if item["time"].hour == 12) is None
+    assert next(item["limiting_factor"] for item in timeline if item["time"].hour == 0)
+
+
+def test_flat_night_and_tooltip_limiting_factor_logic() -> None:
+    assert is_flat_night([84, 85.5, 87])
+    assert not is_flat_night([60, 70, 85])
+    assert limiting_factor_name({
+        "cloud_cover": 95, "light_pollution": 10, "moon": 100, "atmosphere": 100,
+    }) == "light pollution"
 
 
 def test_best_window_requires_complete_darkness_window() -> None:
