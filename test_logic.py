@@ -188,6 +188,23 @@ def test_metric_and_imperial_distance_paths() -> None:
     assert format_distance(16.09344, "Metric (km)") == "16.1 km"
 
 
+def test_section4_fixed_moon_daylight_and_sydney_values() -> None:
+    moon_fraction = moon_illumination(datetime(2026, 8, 17, 11, tzinfo=UTC))
+    assert abs(moon_fraction * 100 - 24.6255) < 0.01
+
+    portland_noon = datetime(2026, 8, 17, 19, tzinfo=UTC)
+    score, state = compute_stargazing_score(
+        10, 10, 0.25, 20, 20000, 40,
+        dt_utc=portland_noon, lat=45.52345, lon=-122.67621,
+    )
+    assert sun_altitude(portland_noon, 45.52345, -122.67621) > 50
+    assert score is None and state["state"] == "not dark yet"
+
+    sydney_noon = datetime(2026, 8, 17, 2, tzinfo=UTC)
+    assert abs(sun_altitude(sydney_noon, -33.87, 151.21) - 42.6792) < 0.01
+    assert abs(moon_altitude(sydney_noon, -33.87, 151.21) - 39.1271) < 0.01
+
+
 def test_meteor_calendar_and_multi_night_summary() -> None:
     activity = meteor_activity(date := datetime(2026, 8, 16, tzinfo=UTC))
     assert "Perseids" in {item["name"] for item in activity["active"]}
