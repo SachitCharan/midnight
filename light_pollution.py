@@ -26,15 +26,25 @@ def artificial_brightness(lat: float, lon: float, population_centers: list) -> f
 
 
 def bortle_class(brightness_index: float) -> int:
-    """Map the arbitrary Walker index onto Bortle 1–9 using log anchors.
+    """Map the arbitrary Walker index onto Bortle 2–9 using three log anchors."""
+    return max(2, min(9, round(_bortle_continuous(brightness_index))))
 
-    Anchors are approximately 0.3 for a remote site (Bortle 1) and 650,000
-    at the center of a major PNW city (Bortle 9).
-    """
-    if brightness_index <= 0:
-        return 1
-    scaled = 1.0 + (math.log10(brightness_index) + 0.5) * (8.0 / 6.3)
-    return max(1, min(9, round(scaled)))
+
+def _bortle_continuous(brightness_index: float) -> float:
+    """Interpolate remote, mid-size-town, and major-city reference points."""
+    log_brightness = math.log10(max(0.3, float(brightness_index)))
+    anchors = [
+        (math.log10(0.3), 2.0),
+        (math.log10(100_000.0), 6.0),
+        (math.log10(650_000.0), 9.0),
+    ]
+    if log_brightness <= anchors[0][0]:
+        return anchors[0][1]
+    for (left_x, left_y), (right_x, right_y) in zip(anchors, anchors[1:]):
+        if log_brightness <= right_x:
+            position = (log_brightness - left_x) / (right_x - left_x)
+            return left_y + position * (right_y - left_y)
+    return anchors[-1][1]
 
 
 _DESCRIPTIONS = {
@@ -55,11 +65,7 @@ def bortle_description(bortle: int) -> str:
 
 
 def darkness_score(brightness_index: float) -> float:
-    if brightness_index <= 0:
-        return 100.0
-    # Preserve continuous resolution while using the same calibrated anchors.
-    bortle_continuous = 1.0 + (math.log10(brightness_index) + 0.5) * (8.0 / 6.3)
-    bortle_continuous = max(1.0, min(9.0, bortle_continuous))
+    bortle_continuous = _bortle_continuous(brightness_index)
     return round(100.0 * (9.0 - bortle_continuous) / 8.0, 1)
 
 

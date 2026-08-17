@@ -55,8 +55,9 @@ solar altitude below −18 degrees.
 
 Artificial brightness uses Walker's Law (Walker, 1977): each nearby population
 center contributes population divided by distance in kilometers to the power
-2.5. Contributions inside 150 km are summed, then a log-scale calibration maps
-the index to a Bortle 1–9 estimate. Weather comes from Open-Meteo. Population
+2.5. Contributions inside 150 km are summed, then a piecewise log calibration
+maps remote, mid-size-town, and major-city reference points to Bortle 2, 6, and
+9. Weather comes from Open-Meteo. Population
 centers come from the committed global GeoNames `cities15000` dataset and are enriched
 with checked Oregon/PNW population figures. No population-data network call is
 required. Optional OpenStreetMap Overpass enrichment can fill smaller towns but

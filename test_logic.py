@@ -102,6 +102,9 @@ def test_light_pollution_calibration() -> None:
     assert 7 <= bortle_class(city) <= 9
     assert 1 <= bortle_class(remote) <= 3
     assert darkness_score(remote) > darkness_score(city)
+    assert bortle_class(0) == 2
+    assert bortle_class(100_000) == 6
+    assert bortle_class(650_000) == 9
 
 
 def test_score_darkness_gate_and_plausibility() -> None:

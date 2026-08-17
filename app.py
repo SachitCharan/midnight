@@ -174,7 +174,11 @@ if selected_match is not None:
     if forecast_error or not forecast:
         st.metric("Modeled Bortle class", f"{bortle} / 9")
         st.caption(interpret_bortle(bortle))
-        st.caption("This is a modeled estimate, not a direct radiometric measurement.")
+        st.caption(
+            "Estimated from population density using Walker's Law. This cannot account for local "
+            "lighting ordinances — communities with dark-sky policies, like Flagstaff, are darker "
+            "than this model predicts."
+        )
         st.subheader("What this sky reveals")
         st.write(f"**Likely visible:** {expectations['visible']}")
         st.write(f"**Hidden by skyglow:** {expectations['missing']}")
@@ -215,7 +219,11 @@ if selected_match is not None:
 
     st.metric("Modeled Bortle class", f"{bortle} / 9")
     st.caption(interpret_bortle(bortle))
-    st.caption("This is a modeled estimate, not a direct radiometric measurement.")
+    st.caption(
+        "Estimated from population density using Walker's Law. This cannot account for local "
+        "lighting ordinances — communities with dark-sky policies, like Flagstaff, are darker "
+        "than this model predicts."
+    )
 
     current_hour = now.replace(minute=0, second=0, microsecond=0)
     night_location_key = selected_match["display_label"]
