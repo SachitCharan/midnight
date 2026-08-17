@@ -145,6 +145,25 @@ def estimated_dark_sky_distance_km(start_bortle: int) -> float:
     return {9: 145.0, 8: 120.0, 7: 90.0, 6: 65.0, 5: 40.0}.get(max(1, min(9, int(start_bortle))), 0.0)
 
 
+def interpret_no_darker_sites(
+    start_bortle: int,
+    search_distance: str,
+    estimated_dark_distance: str | None = None,
+) -> str:
+    if int(start_bortle) <= 4:
+        return (
+            f"Your sky is already Bortle {int(start_bortle)}, which is genuinely dark. "
+            "Staying put is the right answer unless you want different terrain or amenities."
+        )
+    message = f"No location within {search_distance} has a meaningfully darker sky than yours."
+    if estimated_dark_distance:
+        message += (
+            f" A Bortle 4 sky is roughly {estimated_dark_distance} away by a city-brightness rule of thumb; "
+            "the current search did not find a qualifying destination."
+        )
+    return message
+
+
 def interpret_darkness_window(start: datetime, end: datetime) -> str:
     start_text = start.strftime("%I:%M %p").lstrip("0")
     end_text = end.strftime("%I:%M %p").lstrip("0")

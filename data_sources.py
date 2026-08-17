@@ -300,7 +300,7 @@ def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def enrich_dark_sites_with_osm(sites: list[dict]) -> tuple[list[dict], bool]:
     """Prefer nearby named OSM recreation features; otherwise return honest town fallbacks."""
     fallback = [site | {
-        "access_label": "Nearest town — find a public pullout or park nearby. Access not verified.",
+        "access_label": "Nearest town — look for a public pullout or park on the outskirts",
         "osm_public_feature": False,
     } for site in sites]
     if not sites:
@@ -329,16 +329,22 @@ def enrich_dark_sites_with_osm(sites: list[dict]) -> tuple[list[dict], bool]:
             access = str(tags.get("access", "")).lower()
             if not name or feature_lat is None or feature_lon is None or access in {"no", "private", "customers"}:
                 continue
-            feature_type = (
+            feature_type_raw = (
                 tags.get("leisure") or tags.get("tourism") or tags.get("highway")
                 or tags.get("boundary") or "recreation feature"
-            ).replace("_", " ")
-            confirmed = access in {"yes", "permissive", "designated"} or tags.get("ownership") == "public"
-            access_label = (
-                f"OpenStreetMap {feature_type} — access tagged {access or 'public ownership'}; verify hours and current rules."
-                if confirmed
-                else f"OpenStreetMap {feature_type} — public access is not explicitly tagged; verify before visiting."
             )
+            feature_type = feature_type_raw.replace("_", " ")
+            confirmed = access in {"yes", "permissive", "designated"} or tags.get("ownership") == "public"
+            if not confirmed:
+                continue
+            if feature_type_raw in {"park", "nature_reserve", "recreation_ground"}:
+                access_label = "Public park"
+            elif feature_type_raw == "trailhead":
+                access_label = "Trailhead — public access"
+            elif feature_type_raw == "viewpoint":
+                access_label = "Viewpoint — public access"
+            else:
+                access_label = "Public protected area"
             features.append({
                 "name": name, "lat": float(feature_lat), "lon": float(feature_lon),
                 "kind": f"OpenStreetMap {feature_type}", "access_label": access_label,
@@ -362,7 +368,7 @@ def enrich_dark_sites_with_osm(sites: list[dict]) -> tuple[list[dict], bool]:
             enriched.append(site | nearby[0][1] | {"nearest_town": site["name"]})
         else:
             enriched.append(site | {
-                "access_label": "Nearest town — find a public pullout or park nearby. Access not verified.",
+                "access_label": "Nearest town — look for a public pullout or park on the outskirts",
                 "osm_public_feature": False,
             })
     return enriched, used_osm

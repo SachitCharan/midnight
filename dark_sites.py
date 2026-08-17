@@ -17,6 +17,14 @@ def distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
 
+def is_darker_than_start(starting_brightness: float, candidate_brightness: float) -> bool:
+    """Require both a better continuous score and a lower Bortle class."""
+    return (
+        darkness_score(candidate_brightness) > darkness_score(starting_brightness)
+        and bortle_class(candidate_brightness) < bortle_class(starting_brightness)
+    )
+
+
 def find_dark_sites(
     lat: float,
     lon: float,
@@ -25,6 +33,7 @@ def find_dark_sites(
     top_n: int = 8,
     sort_by: str = "Best balance",
     country_code: str | None = None,
+    starting_brightness_index: float | None = None,
 ) -> list[dict]:
     """Return named populated places ranked by darkness and travel distance."""
     if max_distance_km <= 0 or top_n <= 0:
@@ -52,6 +61,8 @@ def find_dark_sites(
             continue
         brightness = artificial_brightness(candidate_lat, candidate_lon, population_centers)
         dark_score = darkness_score(brightness)
+        if starting_brightness_index is not None and not is_darker_than_start(starting_brightness_index, brightness):
+            continue
         candidates.append({
             "name": name,
             "lat": round(candidate_lat, 5),

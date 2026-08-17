@@ -26,13 +26,14 @@ from interpretations import (
     interpret_distance,
     interpret_fog,
     interpret_moon,
+    interpret_no_darker_sites,
     interpret_score,
     interpret_smoke,
     visibility_snapshot,
 )
 from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, limiting_factor, normalize_hourly_data, precompute_night_views, score_label, summarize_nights
 from data_sources import enrich_dark_sites_with_osm, fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
-from dark_sites import distance_km, find_dark_sites, google_maps_url
+from dark_sites import distance_km, find_dark_sites, google_maps_url, is_darker_than_start
 from meteor_showers import meteor_activity
 from units import default_unit_system, distance_to_km, format_distance
 
@@ -215,6 +216,15 @@ def test_dark_sites_exclude_cross_border_candidates() -> None:
     assert "Mexico Site" not in {site["name"] for site in sites}
 
 
+def test_dark_sites_never_recommend_equal_or_worse_skies() -> None:
+    assert is_darker_than_start(10, 1)
+    assert not is_darker_than_start(10, 10)
+    assert not is_darker_than_start(10, 100)
+    guidance = interpret_no_darker_sites(3, "60 mi")
+    assert "Staying put is the right answer" in guidance
+    assert "already Bortle 3" in guidance
+
+
 def test_dark_site_maps_improvement_and_osm_fallback() -> None:
     assert google_maps_url(45.5, -122.7).startswith("https://www.google.com/maps/search/?api=1&query=")
     assert "Modest improvement" in interpret_bortle_improvement(9, 7)
@@ -223,7 +233,19 @@ def test_dark_site_maps_improvement_and_osm_fallback() -> None:
     sample = [{"name": "Town", "lat": 45.0, "lon": -122.0, "country_code": "US"}]
     with patch("data_sources.requests.post", side_effect=requests.ConnectionError("offline")):
         enriched, used_osm = enrich_dark_sites_with_osm(sample)
-    assert not used_osm and "Access not verified" in enriched[0]["access_label"]
+    assert not used_osm and enriched[0]["access_label"].startswith("Nearest town")
+    assert "Access not verified" not in enriched[0]["access_label"]
+
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"elements": [{
+        "type": "node", "lat": 45.001, "lon": -122.001,
+        "tags": {"name": "Night Park", "leisure": "park", "access": "yes"},
+    }]}
+    enrich_dark_sites_with_osm.clear()
+    with patch("data_sources.requests.post", return_value=response):
+        enriched, used_osm = enrich_dark_sites_with_osm(sample)
+    assert used_osm and enriched[0]["access_label"] == "Public park"
 
 
 def test_dark_site_sorting_exposes_distance_darkness_tradeoff() -> None:
