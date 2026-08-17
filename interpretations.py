@@ -124,6 +124,18 @@ def interpret_distance(km: float, units: str) -> str:
     return f"{distance_text} straight-line — {time_text}, before traffic and road detours."
 
 
+def interpret_darkness_change(start_score: float, candidate_score: float) -> str:
+    """Describe a light-pollution-only change without implying an overall-score gain."""
+    start = max(0.0, min(100.0, float(start_score)))
+    candidate = max(0.0, min(100.0, float(candidate_score)))
+    gain = max(0.0, candidate - start)
+    return (
+        f"Modeled darkness from light pollution: {start:.0f}/100 at your location → "
+        f"{candidate:.0f}/100 at this site (+{gain:.0f}). "
+        "This is separate from the overall stargazing score."
+    )
+
+
 def interpret_bortle_improvement(start_bortle: int, site_bortle: int) -> str:
     start = max(1, min(9, int(start_bortle)))
     site = max(1, min(9, int(site_bortle)))

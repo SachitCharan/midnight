@@ -49,6 +49,28 @@ def _place_region(place: dict) -> str:
     return country
 
 
+def rank_dark_site_candidates(candidates: list[dict], sort_by: str) -> list[dict]:
+    """Rank candidates with three deliberately distinct user intents."""
+    for item in candidates:
+        gain = float(item.get("darkness_gain", item.get("darkness_score", 0.0)))
+        distance = float(item.get("distance_km", 0.0))
+        # One modeled darkness point offsets about 4.5 km of straight-line travel.
+        # This favors a meaningful mid-distance improvement instead of collapsing
+        # into the same distance-first ordering as "Shortest trip".
+        item["balance_score"] = round(gain - 0.22 * distance, 2)
+    if sort_by == "Darkest sky":
+        candidates.sort(key=lambda item: (-item["darkness_score"], item["distance_km"]))
+    elif sort_by == "Shortest trip":
+        candidates.sort(key=lambda item: (item["distance_km"], -item["darkness_gain"]))
+    else:
+        candidates.sort(
+            key=lambda item: (
+                -item["balance_score"], -item["darkness_gain"], item["distance_km"]
+            )
+        )
+    return candidates
+
+
 def find_hybrid_dark_sites(
     lat: float,
     lon: float,
@@ -116,7 +138,7 @@ def find_hybrid_dark_sites(
                 "darkness_gain": round(darkness_gain, 1),
                 "darkness_gain_per_km": round(darkness_gain / max(5.0, travel_distance), 3),
                 "bortle": bortle_class(brightness),
-                "usefulness_score": round(darkness_gain / max(5.0, travel_distance), 3),
+                "usefulness_score": round(darkness_gain - 0.22 * travel_distance, 2),
                 "kind": "Modeled land point",
                 "country_code": str(nearest_place.get("country_code", "")).upper(),
                 "nearest_place": str(nearest_place.get("name", "Named place")),
@@ -127,13 +149,7 @@ def find_hybrid_dark_sites(
                 "region": _place_region(nearest_place),
             })
 
-    if sort_by == "Darkest sky":
-        candidates.sort(key=lambda item: (-item["darkness_score"], item["distance_km"]))
-    elif sort_by == "Shortest trip":
-        candidates.sort(key=lambda item: (item["distance_km"], -item["darkness_gain"]))
-    else:
-        candidates.sort(key=lambda item: (-item["darkness_gain_per_km"], -item["darkness_gain"], item["distance_km"]))
-    return candidates[:top_n]
+    return rank_dark_site_candidates(candidates, sort_by)[:top_n]
 
 
 def find_dark_sites(
@@ -150,6 +166,10 @@ def find_dark_sites(
     if max_distance_km <= 0 or top_n <= 0:
         return []
     candidates = []
+    starting_darkness = (
+        darkness_score(starting_brightness_index)
+        if starting_brightness_index is not None else 0.0
+    )
     seen = set()
     for place in population_centers:
         if place.get("feature_class", "P") != "P":
@@ -174,6 +194,7 @@ def find_dark_sites(
         dark_score = darkness_score(brightness)
         if starting_brightness_index is not None and not is_darker_than_start(starting_brightness_index, brightness):
             continue
+        darkness_gain = dark_score - starting_darkness
         candidates.append({
             "name": name,
             "lat": round(candidate_lat, 5),
@@ -181,19 +202,14 @@ def find_dark_sites(
             "distance_km": round(distance, 1),
             "brightness_index": brightness,
             "darkness_score": dark_score,
+            "darkness_gain": round(darkness_gain, 1),
             "bortle": bortle_class(brightness),
-            "usefulness_score": round(dark_score - 0.04 * distance, 1),
+            "usefulness_score": round(darkness_gain - 0.22 * distance, 2),
             "kind": "GeoNames populated place",
             "country_code": place_country_code,
         })
 
-    if sort_by == "Darkest sky":
-        candidates.sort(key=lambda item: (-item["darkness_score"], item["distance_km"], item["name"]))
-    elif sort_by == "Shortest trip":
-        candidates.sort(key=lambda item: (item["distance_km"], -item["darkness_score"], item["name"]))
-    else:
-        candidates.sort(key=lambda item: (-item["usefulness_score"], -item["darkness_score"], item["distance_km"], item["name"]))
-    return candidates[:top_n]
+    return rank_dark_site_candidates(candidates, sort_by)[:top_n]
 
 
 def google_maps_url(lat: float, lon: float) -> str:

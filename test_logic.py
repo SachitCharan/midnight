@@ -22,6 +22,7 @@ from interpretations import (
     interpret_bortle_improvement,
     interpret_cloud_layers,
     interpret_clouds,
+    interpret_darkness_change,
     interpret_darkness_window,
     interpret_distance,
     interpret_fog,
@@ -33,7 +34,7 @@ from interpretations import (
 )
 from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, is_flat_night, limiting_factor, limiting_factor_name, normalize_hourly_data, precompute_night_views, score_label, summarize_nights
 from data_sources import confirm_land_by_elevation, enrich_dark_sites_with_osm, fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
-from dark_sites import distance_km, find_dark_sites, find_hybrid_dark_sites, google_maps_url, is_darker_than_start
+from dark_sites import distance_km, find_dark_sites, find_hybrid_dark_sites, google_maps_url, is_darker_than_start, rank_dark_site_candidates
 from meteor_showers import meteor_activity
 from units import default_unit_system, distance_to_km, format_distance
 
@@ -298,6 +299,24 @@ def test_dark_site_sorting_exposes_distance_darkness_tradeoff() -> None:
     assert shortest[0]["name"] == "Near town"
     assert darkest[0]["darkness_score"] >= darkest[-1]["darkness_score"]
     assert all(not site["name"].startswith("Modeled site") for site in shortest + darkest)
+
+    choices = [
+        {"name": "Near", "distance_km": 10, "darkness_score": 40, "darkness_gain": 40},
+        {"name": "Balanced", "distance_km": 40, "darkness_score": 55, "darkness_gain": 55},
+        {"name": "Darkest", "distance_km": 90, "darkness_score": 60, "darkness_gain": 60},
+    ]
+    balanced_rank = rank_dark_site_candidates([item.copy() for item in choices], "Best balance")
+    shortest_rank = rank_dark_site_candidates([item.copy() for item in choices], "Shortest trip")
+    darkest_rank = rank_dark_site_candidates([item.copy() for item in choices], "Darkest sky")
+    assert balanced_rank[0]["name"] == "Balanced"
+    assert shortest_rank[0]["name"] == "Near"
+    assert darkest_rank[0]["name"] == "Darkest"
+    assert len({balanced_rank[0]["name"], shortest_rank[0]["name"], darkest_rank[0]["name"]}) == 3
+
+    wording = interpret_darkness_change(18, 54)
+    assert "18/100 at your location" in wording
+    assert "54/100 at this site (+36)" in wording
+    assert "separate from the overall stargazing score" in wording
 
 
 def test_reference_cities_return_named_land_candidates() -> None:
