@@ -30,7 +30,7 @@ from interpretations import (
     interpret_smoke,
     visibility_snapshot,
 )
-from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, limiting_factor, normalize_hourly_data, score_label, summarize_nights
+from scoring import build_score_timeline, compute_stargazing_score, find_best_window, hourly_data_covers_window, limiting_factor, normalize_hourly_data, precompute_night_views, score_label, summarize_nights
 from data_sources import enrich_dark_sites_with_osm, fetch_air_quality, fetch_forecast, fetch_population_centers, geocode_location, geocode_search
 from dark_sites import distance_km, find_dark_sites, google_maps_url
 from meteor_showers import meteor_activity
@@ -320,6 +320,19 @@ def test_meteor_calendar_and_multi_night_summary() -> None:
     nights = summarize_nights(hourly, 45, 0)
     assert len(nights) >= 2
     assert all(0 <= night["score"] <= 100 for night in nights)
+
+
+def test_seven_night_views_are_precomputed_for_location() -> None:
+    precompute_night_views.clear()
+    start = datetime(2026, 12, 20, tzinfo=UTC)
+    hourly = [{
+        "time": start + timedelta(hours=index), "cloud_cover": 20,
+        "brightness_index": 10, "visibility": 18000, "relative_humidity_2m": 50,
+    } for index in range(8 * 24)]
+    views = precompute_night_views("Test, Place", 45, 0, "UTC", start, hourly)
+    assert len(views) == 7
+    assert len({view["label"] for view in views}) == 7
+    assert all({"dark_window", "forecast", "complete", "best", "timeline"} <= set(view) for view in views)
 
 
 def test_best_window_is_first_upcoming_dark_interval_and_timezone_aware() -> None:

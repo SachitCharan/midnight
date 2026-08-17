@@ -6,6 +6,9 @@ from datetime import datetime
 from datetime import timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import streamlit as st
+
+from astronomy import find_dark_window
 from astronomy import is_astronomical_darkness, moon_altitude, moon_illumination
 from light_pollution import darkness_score
 
@@ -234,3 +237,46 @@ def summarize_nights(hourly_data: list[dict], lat: float, lon: float, timezone_n
         if observing_date not in nights or score > nights[observing_date]["score"]:
             nights[observing_date] = candidate
     return [nights[key] for key in sorted(nights)]
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def precompute_night_views(
+    location_key: str,
+    lat: float,
+    lon: float,
+    timezone_name: str,
+    current_hour: datetime,
+    _hourly_data: list[dict],
+) -> list[dict]:
+    """Prepare every selectable night once; selection later becomes a dictionary lookup."""
+    del location_key  # Included deliberately in Streamlit's cache key.
+    try:
+        local_zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        local_zone = timezone.utc
+    upcoming = [row for row in _hourly_data if row["time"] >= current_hour]
+    summaries = summarize_nights(upcoming, lat, lon, timezone_name)[:7]
+    prepared = []
+    for summary in summaries:
+        selected_date = summary["date"]
+        selected_noon = datetime.combine(
+            selected_date, datetime.min.time(), tzinfo=local_zone
+        ) + timedelta(hours=12)
+        dark_window = find_dark_window(selected_noon.astimezone(timezone.utc), lat, lon, 30)
+        selected_forecast = [
+            row for row in _hourly_data
+            if dark_window is not None and dark_window[0] <= row["time"] < dark_window[1]
+        ]
+        complete = hourly_data_covers_window(selected_forecast, dark_window)
+        best = find_best_window(selected_forecast, lat, lon, dark_window) if complete else {}
+        prepared.append({
+            "label": selected_date.strftime("%a, %b %d"),
+            "date": selected_date,
+            "summary": summary,
+            "dark_window": dark_window,
+            "forecast": selected_forecast,
+            "complete": complete,
+            "best": best,
+            "timeline": build_score_timeline(selected_forecast, lat, lon),
+        })
+    return prepared

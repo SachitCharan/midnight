@@ -44,6 +44,7 @@ from scoring import (
     hourly_data_covers_window,
     limiting_factor,
     normalize_hourly_data,
+    precompute_night_views,
     score_label,
     summarize_nights,
 )
@@ -215,10 +216,13 @@ if selected_match is not None:
     st.caption("This is a modeled estimate, not a direct radiometric measurement.")
 
     current_hour = now.replace(minute=0, second=0, microsecond=0)
-    upcoming_forecast = [row for row in forecast if row["time"] >= current_hour]
-    nights = summarize_nights(upcoming_forecast, location["lat"], location["lon"], location["timezone"])[:7]
-    night_labels = [night["date"].strftime("%a, %b %d") for night in nights]
     night_location_key = selected_match["display_label"]
+    night_views = precompute_night_views(
+        night_location_key, location["lat"], location["lon"], location["timezone"],
+        current_hour, forecast,
+    )
+    nights = [view["summary"] for view in night_views]
+    night_labels = [view["label"] for view in night_views]
     if (
         st.session_state.get("night_location_key") != night_location_key
         or st.session_state.get("selected_night") not in night_labels
@@ -230,27 +234,15 @@ if selected_match is not None:
         st.selectbox("Choose a night to inspect", night_labels, key="selected_night")
         if night_labels else None
     )
-    selected_night = next(
-        (night for night, label in zip(nights, night_labels) if label == selected_night_label),
+    selected_view = next(
+        (view for view in night_views if view["label"] == selected_night_label),
         None,
     )
-    selected_date = selected_night["date"] if selected_night is not None else None
-    selected_dark_window = None
-    if selected_date is not None:
-        selected_noon = datetime.combine(selected_date, datetime.min.time(), tzinfo=local_zone) + timedelta(hours=12)
-        selected_dark_window = find_dark_window(
-            selected_noon.astimezone(timezone.utc), location["lat"], location["lon"], 30
-        )
-    selected_forecast = [
-        row for row in forecast
-        if selected_dark_window is not None
-        and selected_dark_window[0] <= row["time"] < selected_dark_window[1]
-    ]
-    complete_dark_window = hourly_data_covers_window(selected_forecast, selected_dark_window)
-    best = (
-        find_best_window(selected_forecast, location["lat"], location["lon"], selected_dark_window)
-        if complete_dark_window else {}
-    )
+    selected_date = selected_view["date"] if selected_view is not None else None
+    selected_dark_window = selected_view["dark_window"] if selected_view is not None else None
+    selected_forecast = selected_view["forecast"] if selected_view is not None else []
+    complete_dark_window = selected_view["complete"] if selected_view is not None else False
+    best = selected_view["best"] if selected_view is not None else {}
     chart_a_title = (
         f"Tonight — {selected_night_label}"
         if night_labels and selected_night_label == night_labels[0]
@@ -274,7 +266,7 @@ if selected_match is not None:
             f"with a peak modeled score of **{best['best_score']:.0f}/100** — {interpret_score(best['best_score'])}"
         )
         timeline_rows = []
-        for item in build_score_timeline(selected_forecast, location["lat"], location["lon"]):
+        for item in selected_view["timeline"]:
             local_time = item["time"].astimezone(local_zone)
             interval_end = min(item["time"] + timedelta(hours=1), selected_dark_window[1])
             timeline_rows.append({
