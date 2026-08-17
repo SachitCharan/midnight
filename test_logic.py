@@ -314,9 +314,10 @@ def test_dark_site_sorting_exposes_distance_darkness_tradeoff() -> None:
     assert len({balanced_rank[0]["name"], shortest_rank[0]["name"], darkest_rank[0]["name"]}) == 3
 
     wording = interpret_darkness_change(18, 54)
-    assert "18/100 at your location" in wording
-    assert "54/100 at this site (+36)" in wording
-    assert "separate from the overall stargazing score" in wording
+    assert "54/100 from artificial light" in wording
+    assert "at your location" not in wording
+    assert "separate from your current overall stargazing score" in wording
+    assert "0/100 at your location" not in interpret_darkness_change(0, 54)
 
 
 def test_reference_cities_return_named_land_candidates() -> None:

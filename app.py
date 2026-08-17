@@ -838,7 +838,6 @@ if selected_match is not None:
         )
         dark_site_section.write(
             f"**Starting location (gold marker):** {location['name']} — {interpret_bortle(bortle)} · "
-            f"modeled light-pollution darkness {starting_darkness_score:.0f}/100 · "
             f"{format_distance(0, unit_system)} straight-line · "
             f"`{location['lat']:.4f}, {location['lon']:.4f}`"
         )
